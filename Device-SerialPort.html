@@ -27,7 +27,9 @@
 	<UL>
 
 		<LI><A HREF="#Initialization">Initialization</A>
+		<LI><A HREF="#Configuration_Utility_Methods">Configuration Utility Methods</A>
 		<LI><A HREF="#Configuration_and_Capability_Met">Configuration and Capability Methods</A>
+		<LI><A HREF="#Operating_Methods">Operating Methods</A>
 		<LI><A HREF="#Stty_Shortcuts">Stty Shortcuts</A>
 		<LI><A HREF="#Lookfor_and_I_O_Processing">Lookfor and I/O Processing </A>
 		<LI><A HREF="#Exports">Exports</A>
@@ -64,7 +66,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 <HR>
 <H1><A NAME="SYNOPSIS">SYNOPSIS</A></H1>
 <P>
-<PRE>  use Device::SerialPort 0.06;
+<PRE>  use Device::SerialPort qw( :PARAM :STAT 0.07 );
 </PRE>
 <P>
 <HR>
@@ -101,6 +103,16 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
        # or switch to a different configuration on the same port
   $PortObj-&gt;restart($Configuration_File_Name)
        || warn &quot;Can't reread $Configuration_File_Name: $!\n&quot;;
+</PRE>
+<P>
+<PRE>       # &quot;app. variables&quot; saved in $Configuration_File, not used internally
+  $PortObj-&gt;devicetype('none');     # CM11, CM17, 'weeder', 'modem'
+  $PortObj-&gt;hostname('localhost');  # for socket-based implementations
+  $PortObj-&gt;hostaddr(0);            # false unless specified
+  $PortObj-&gt;datatype('raw');        # in case an application needs_to_know
+  $PortObj-&gt;cfg_param_1('none');    # null string '' hard to save/restore
+  $PortObj-&gt;cfg_param_2('none');    # 3 spares should be enough for now
+  $PortObj-&gt;cfg_param_3('none');    # one may end up as a log file path
 </PRE>
 <P>
 <PRE>      # test suite use only
@@ -192,7 +204,23 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
      # simple echo with no control character processing
 </PRE>
 <P>
-<PRE>  $PortObj-&gt;write_drain;  # POSIX replacement for Win32 write_done(1)
+<PRE>  $ModemStatus = $PortObj-&gt;modemlines;
+  if ($ModemStatus &amp; $PortObj-&gt;MS_RLSD_ON) { print &quot;carrier detected&quot;; }
+</PRE>
+<P>
+<PRE>  ($BlockingFlags, $InBytes, $OutBytes, $ErrorFlags) = $PortObj-&gt;status;
+      # same format for compatibility. Only $InBytes and $OutBytes are
+      # currently returned (on linux). Others are 0.
+</PRE>
+<P>
+<PRE>  ($done, $count_out) = $PortObj-&gt;write_done(0);
+     # POSIX defaults to background write. Currently $count_out always 0.
+     # $done set when hardware finished transmitting and shared line can
+     # be released for other use. Ioctl may not work on all OSs
+</PRE>
+<P>
+<PRE>  $PortObj-&gt;write_drain;  # POSIX alternative to Win32 write_done(1)
+                          # set when software is finished transmitting
   $PortObj-&gt;purge_all;
   $PortObj-&gt;purge_rx;
   $PortObj-&gt;purge_tx;
@@ -333,9 +361,10 @@ The <CODE>$lockfile</CODE> parameter has a related purpose. It will attempt to c
 file will be automatically deleted when the <CODE>$PortObj</CODE>
 is no longer used (by DESTROY). You would usually request <CODE>$lockfile</CODE>
 with <CODE>$quiet</CODE> true to disable messages while attempting to obtain exclusive ownership of
-the port via the lock. Lockfiles are VERY preliminary in Version 0.05. I
-know of intermittent timing problems with uugetty when attempting to use a
-port also used for logins.
+the port via the lock. Lockfiles are experimental in Version 0.07. They are
+intended for use with other applications. No attempt is made to resolve
+port aliases (/dev/modem == /dev/ttySx) or to deal with login processes
+such as getty and uugetty.
 
 <P>
 The second constructor, <STRONG>start</STRONG> is intended to simplify scripts which need a constant setup. It executes
@@ -407,11 +436,12 @@ One of the following: ``none'', ``rts'', ``xoff''.
 </DL>
 <P>
 Some individual parameters (eg. baudrate) can be changed after the
-initialization is completed. These will be validated and will update the
-port as required.
+initialization is completed. These will be validated and will update the <EM>serial driver</EM> as required. The <STRONG>save</STRONG> method will write the current parameters to a file that <STRONG>start, tie,</STRONG> and
+<STRONG>restart</STRONG> can use to reestablish a functional setup.
 
 <P>
-<PRE>  $PortObj = new Device::SerialPort ($PortName) || die &quot;Can't open $PortName: $!\n&quot;;
+<PRE>  $PortObj = new Win32::SerialPort ($PortName, $quiet)
+       || die &quot;Can't open $PortName: $^E\n&quot;;    # $quiet is optional
 </PRE>
 <P>
 <PRE>  $PortObj-&gt;user_msg(ON);
@@ -419,48 +449,44 @@ port as required.
   $PortObj-&gt;baudrate(9600);
   $PortObj-&gt;parity(&quot;none&quot;);
   $PortObj-&gt;stopbits(1);
-  $PortObj-&gt;handshake(&quot;rts&quot;)
+  $PortObj-&gt;handshake(&quot;rts&quot;);
 </PRE>
 <P>
-<PRE>  $PortObj-&gt;write_settings;
+<PRE>  $PortObj-&gt;write_settings || undef $PortObj;
 </PRE>
 <P>
-<PRE>  $PortObj-&gt;baudrate(300);
+<PRE>  $PortObj-&gt;save($Configuration_File_Name);
+  $PortObj-&gt;baudrate(300);
+  $PortObj-&gt;restart($Configuration_File_Name);  # back to 9600 baud
 </PRE>
 <P>
-<PRE>  $PortObj-&gt;close;
+<PRE>  $PortObj-&gt;close || die &quot;failed to close&quot;;
+  undef $PortObj;                               # frees memory back to perl
 </PRE>
 <P>
-<PRE>  undef $PortObj;  # closes port AND frees memory in perl
-</PRE>
+<HR>
+<H2><A NAME="Configuration_Utility_Methods">Configuration Utility Methods</A></H2>
 <P>
 Use <STRONG>alias</STRONG> to convert the name used by ``built-in'' messages.
 
 <P>
-<PRE>  $PortObj-&gt;alias(&quot;FIDO&quot;);
+<PRE>  $PortObj-&gt;alias(&quot;MODEM1&quot;);
 </PRE>
 <P>
-Version 0.04 adds <STRONG>pulse</STRONG> methods for the <EM>RTS, BREAK, and DTR</EM> bits. The
-<STRONG>pulse</STRONG> methods assume the bit is in the opposite state when the method is called.
-They set the requested state, delay the specified number of milliseconds,
-set the opposite state, and again delay the specified time. These methods
-are designed to support devices, such as the X10 ``FireCracker'' control
-and some modems, which require pulses on these lines to signal specific
-events or data. Timing for the <EM>active</EM> part of <STRONG>pulse_break_on</STRONG>
-is handled by <EM>POSIX::tcsendbreak(0)</EM>, which sends a 250-500 millisecond BREAK pulse. It is <EM>NOT</EM> guaranteed to block until done.
+Starting in Version 0.07, a number of <EM>Application Variables</EM> are saved in <STRONG>$Configuration_File</STRONG>. These parameters are not used internally. But methods allow setting and
+reading them. The intent is to facilitate the use of separate <EM>configuration scripts</EM> to create the files. Then an application can use <STRONG>start</STRONG> as the Constructor and not bother with command line processing or managing
+its own small configuration file. The default values and number of
+parameters is subject to change.
 
 <P>
-<PRE>  $PortObj-&gt;pulse_break_on($milliseconds);
-  $PortObj-&gt;pulse_rts_on($milliseconds);
-  $PortObj-&gt;pulse_rts_off($milliseconds);
-  $PortObj-&gt;pulse_dtr_on($milliseconds);
-  $PortObj-&gt;pulse_dtr_off($milliseconds);
+<PRE>  $PortObj-&gt;devicetype('none'); 
+  $PortObj-&gt;hostname('localhost');  # for socket-based implementations
+  $PortObj-&gt;hostaddr(0);            # a &quot;false&quot; value
+  $PortObj-&gt;datatype('raw');        # 'record' is another possibility
+  $PortObj-&gt;cfg_param_1('none');
+  $PortObj-&gt;cfg_param_2('none');    # 3 spares should be enough for now
+  $PortObj-&gt;cfg_param_3('none');
 </PRE>
-<P>
-In Version 0.05, these calls and the <STRONG>rts_active</STRONG> and <STRONG>dtr_active</STRONG> calls verify the parameters and any required <EM>ioctl constants</EM>, and return <CODE>undef</CODE>
-unless the call succeeds. You can use the <STRONG>can_ioctl</STRONG> method to see if the required constants are available. On Version 0.04, the
-module would not load unless <EM>asm/termios.ph</EM> was found at startup.
-
 <P>
 <HR>
 <H2><A NAME="Configuration_and_Capability_Met">Configuration and Capability Methods</A></H2>
@@ -504,6 +530,31 @@ unexpected argument). Only the baudrate, parity, databits, stopbits, and
 handshake methods currently support this feature.
 
 </DL>
+<P>
+<HR>
+<H2><A NAME="Operating_Methods">Operating Methods</A></H2>
+<P>
+Version 0.04 adds <STRONG>pulse</STRONG> methods for the <EM>RTS, BREAK, and DTR</EM> bits. The
+<STRONG>pulse</STRONG> methods assume the bit is in the opposite state when the method is called.
+They set the requested state, delay the specified number of milliseconds,
+set the opposite state, and again delay the specified time. These methods
+are designed to support devices, such as the X10 ``FireCracker'' control
+and some modems, which require pulses on these lines to signal specific
+events or data. Timing for the <EM>active</EM> part of <STRONG>pulse_break_on</STRONG>
+is handled by <EM>POSIX::tcsendbreak(0)</EM>, which sends a 250-500 millisecond BREAK pulse. It is <EM>NOT</EM> guaranteed to block until done.
+
+<P>
+<PRE>  $PortObj-&gt;pulse_break_on($milliseconds);
+  $PortObj-&gt;pulse_rts_on($milliseconds);
+  $PortObj-&gt;pulse_rts_off($milliseconds);
+  $PortObj-&gt;pulse_dtr_on($milliseconds);
+  $PortObj-&gt;pulse_dtr_off($milliseconds);
+</PRE>
+<P>
+In Version 0.05, these calls and the <STRONG>rts_active</STRONG> and <STRONG>dtr_active</STRONG> calls verify the parameters and any required <EM>ioctl constants</EM>, and return <CODE>undef</CODE>
+unless the call succeeds. You can use the <STRONG>can_ioctl</STRONG> method to see if the required constants are available. On Version 0.04, the
+module would not load unless <EM>asm/termios.ph</EM> was found at startup.
+
 <P>
 <HR>
 <H2><A NAME="Stty_Shortcuts">Stty Shortcuts</A></H2>
@@ -661,6 +712,26 @@ Utility subroutines and constants for parameter setting and test:
 <PRE>        LONGsize        SHORTsize       nocarp          yes_true
         OS_Error
 </PRE>
+<DT><STRONG><A NAME="item__STAT">:STAT</A></STRONG><DD>
+<P>
+The Constants named BM_* and CE_* are omitted. But the MS_* Constants are
+defined for possible use with <STRONG>modemlines</STRONG>. They are assigned to corresponding functions, but the bit position will
+be different from that on Win32.
+
+<P>
+Which incoming bits are active:
+
+<P>
+<PRE>        MS_CTS_ON       MS_DSR_ON       MS_RING_ON      MS_RLSD_ON
+</PRE>
+<P>
+Offsets into the array returned by <STRONG>status:</STRONG>
+
+
+
+<P>
+<PRE>        ST_BLOCK        ST_INPUT        ST_OUTPUT       ST_ERROR
+</PRE>
 <DT><STRONG><A NAME="item__ALL">:ALL</A></STRONG><DD>
 <P>
 All of the above. Except for the <EM>test suite</EM>, there is not really a good reason to do this.
@@ -722,7 +793,12 @@ Write timeouts and <STRONG>read_interval</STRONG> timeouts are not currently sup
 <HR>
 <H1><A NAME="BUGS">BUGS</A></H1>
 <P>
-The module does not reliably open with lockfiles. Experiment if you like.
+See the limitations about lockfiles. Experiment if you like.
+
+<P>
+The location of <CODE>termios.ph</CODE> is different on other Operating Systems. Some may not have it at all or may
+use a different name. Please report locations you find which differ from
+this so I can add them to later versions.
 
 <P>
 With all the <EM>currently unimplemented features</EM>, we don't need any more. But there probably are some.
@@ -738,8 +814,7 @@ HREF="mailto:wcbirthisel@alum.mit.edu.">wcbirthisel@alum.mit.edu.</A>
 <HR>
 <H2><A NAME="Win32_SerialPort_Functions_Not_">Win32::SerialPort Functions Not Currently Supported</A></H2>
 <P>
-<PRE>  ($BlockingFlags, $InBytes, $OutBytes, $ErrorFlags) = $PortObj-&gt;status;
-  $LatchErrorFlags = $PortObj-&gt;reset_error;
+<PRE>  $LatchErrorFlags = $PortObj-&gt;reset_error;
 </PRE>
 <P>
 <PRE>  $PortObj-&gt;read_interval(100);         # max time between read char
@@ -760,7 +835,7 @@ HREF="mailto:wcbirthisel@alum.mit.edu.">wcbirthisel@alum.mit.edu.</A>
 <HR>
 <H2><A NAME="Win32_SerialPort_Functions_Not_">Win32::SerialPort Functions Not Ported to POSIX</A></H2>
 <P>
-<PRE>        modemlines      transmit_char
+<PRE>        transmit_char
 </PRE>
 <P>
 <HR>
@@ -775,9 +850,8 @@ HREF="mailto:wcbirthisel@alum.mit.edu.">wcbirthisel@alum.mit.edu.</A>
         is_read_buf     is_write_buf    is_buffers      is_read_interval
         is_error_char   resume_tx       is_stopbits     is_write_const_time
         is_binary       is_status       write_bg        is_parity_enable
-        is_modemlines   read_bg         read_done       write_bg
+        is_modemlines   read_bg         read_done       break_active
         xoff_active     is_read_buf     is_write_buf    xon_active
-        write_done      break_active
 </PRE>
 <P>
 <HR>
@@ -788,10 +862,6 @@ are only available in Win32::SerialPort and Win32API::CommPort as optional
 Exports. The list includes the following:
 
 <DL>
-<DT><STRONG><A NAME="item__STAT">:STAT</A></STRONG><DD>
-<P>
-The Constants named BM_*, MS_*, CE_*, and ST_*
-
 <DT><STRONG><A NAME="item__RAW">:RAW</A></STRONG><DD>
 <P>
 The API Wrapper Methods and Constants used only to support them including
@@ -853,7 +923,7 @@ Copyright (C) 1999, Bill Birthisel. All rights reserved.
 
 <P>
 This module is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. 11 August 1999.
+under the same terms as Perl itself. 5 Sepember 1999.
 
 </BODY>
 

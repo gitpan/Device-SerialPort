@@ -10,7 +10,7 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 BEGIN { $| = 1; print "1..159\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use AltPort qw( :PARAM 0.06 );		# check inheritance & export
+use AltPort qw( :PARAM 0.07 );		# check inheritance & export
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";

@@ -11,6 +11,8 @@
 
 package SerialJunk;
 
+# this is the linux path. Need to determine location on other OSs
+
 use vars qw($ioctl_ok);
 eval { require 'asm/termios.ph'; };
 if ($@) {
@@ -26,16 +28,25 @@ package Device::SerialPort;
 use POSIX qw(:termios_h);
 use IO::Handle;
 
-use vars qw($bitset $bitclear $rtsout $dtrout);
+use vars qw($bitset $bitclear $rtsout $dtrout $getstat $incount $outcount
+	    $txdone);
 if ($SerialJunk::ioctl_ok) {
     $bitset = &SerialJunk::TIOCMBIS;
     $bitclear = &SerialJunk::TIOCMBIC;
+    $getstat = &SerialJunk::TIOCMGET;
+    $incount = &SerialJunk::TIOCINQ;
+    $outcount = &SerialJunk::TIOCOUTQ;
+    $txdone = &SerialJunk::TIOCSERGETLSR;
     $rtsout = pack('L', &SerialJunk::TIOCM_RTS);
     $dtrout = pack('L', &SerialJunk::TIOCM_DTR);
 }
 else {
     $bitset = 0;
     $bitclear = 0;
+    $statget = 0;
+    $incount = 0;
+    $outcount = 0;
+    $txdone = 0;
     $rtsout = pack('L', 0);
     $dtrout = pack('L', 0);
 }
@@ -61,29 +72,65 @@ sub ECHOCTL {
     return &SerialJunk::ECHOCTL;
 }
 
+sub TIOCM_LE {
+    if (defined &SerialJunk::TIOCSER_TEMT) { return &SerialJunk::TIOCSER_TEMT; }
+    if (defined &SerialJunk::TIOCM_LE) { return &SerialJunk::TIOCM_LE; }
+    0;
+}
+
+## Next 4 use Win32 names for compatibility
+
+sub MS_RLSD_ON {
+    if (defined &SerialJunk::TIOCM_CAR) { return &SerialJunk::TIOCM_CAR; }
+    if (defined &SerialJunk::TIOCM_CD) { return &SerialJunk::TIOCM_CD; }
+    0;
+}
+
+sub MS_RING_ON {
+    if (defined &SerialJunk::TIOCM_RNG) { return &SerialJunk::TIOCM_RNG; }
+    if (defined &SerialJunk::TIOCM_RI) { return &SerialJunk::TIOCM_RI; }
+    0;
+}
+
+sub MS_CTS_ON {
+    return 0 unless (defined &SerialJunk::TIOCM_CTS);
+    return &SerialJunk::TIOCM_CTS;
+}
+
+sub MS_DSR_ON {
+    return 0 unless (defined &SerialJunk::TIOCM_DSR);
+    return &SerialJunk::TIOCM_DSR;
+}
+
 use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.06';
+$VERSION = '0.07';
 
 require Exporter;
 
 @ISA = qw(Exporter);
-# Items to export into callers namespace by default. Note: do not export
-# names by default without a very good reason. Use EXPORT_OK instead.
-# Do not simply export all your public functions/methods/constants.
-
 @EXPORT= qw();
 @EXPORT_OK= qw();
-%EXPORT_TAGS = (PARAM	=> [qw( LONGsize	SHORTsize	OS_Error
+%EXPORT_TAGS = (STAT	=> [qw( MS_CTS_ON	MS_DSR_ON
+				MS_RING_ON	MS_RLSD_ON
+				ST_BLOCK	ST_INPUT
+				ST_OUTPUT	ST_ERROR )],
+
+		PARAM	=> [qw( LONGsize	SHORTsize	OS_Error
 				nocarp		yes_true )]);
 
-Exporter::export_ok_tags('PARAM');
+Exporter::export_ok_tags('STAT', 'PARAM');
 
 $EXPORT_TAGS{ALL} = \@EXPORT_OK;
 
 #### Package variable declarations ####
+
+sub ST_BLOCK	{0}	# status offsets for caller
+sub ST_INPUT	{1}
+sub ST_OUTPUT	{2}
+sub ST_ERROR	{3}	# latched
 
 # parameters that must be included in a "save" and "checking subs"
 
@@ -93,6 +140,13 @@ my %validate =	(
 		RCONST		=> "read_const_time",
 		RTOT		=> "read_char_time",
 		U_MSG		=> "user_msg",
+		DVTYPE		=> "devicetype",
+		HNAME		=> "hostname",
+		HADDR		=> "hostaddr",
+		DATYPE		=> "datatype",
+		CFG_1		=> "cfg_param_1",
+		CFG_2		=> "cfg_param_2",
+		CFG_3		=> "cfg_param_3",
 		);
 
 # Linux-specific constant for Hardware Handshaking
@@ -347,6 +401,13 @@ sub new {
     $self->{"_CMATCH"}		= [];
     @{ $self->{"_MATCH"} }	= "\n";
     @{ $self->{"_CMATCH"} }	= "\n";
+    $self->{DVTYPE}		= "none";
+    $self->{HNAME}		= "localhost";
+    $self->{HADDR}		= 0;
+    $self->{DATYPE}		= "raw";
+    $self->{CFG_1}		= "none";
+    $self->{CFG_2}		= "none";
+    $self->{CFG_3}		= "none";
 
     bless ($self, $class);
     return $self;
@@ -392,6 +453,8 @@ sub save {
     print CF "$cfg_file_sig";
     print CF "$self->{NAME}\n";
 	# used to "reopen" so must be DEVICE=NAME
+    print CF "$self->{LOCK}\n";
+	# use lock to "open" if established
 
         # put current values from Termios structure FIRST
     foreach $item (@termios_fields) {
@@ -425,7 +488,7 @@ sub get_start_values {
         carp "can't open file: $filename"; 
         return;
     }
-    my ($signature, $name, @values) = <CF>;
+    my ($signature, $name, $lockfile, @values) = <CF>;
     close CF;
     
     unless ( $cfg_file_sig eq $signature ) {
@@ -437,6 +500,7 @@ sub get_start_values {
         carp "Invalid Port DEVICE=$self->{NAME} in $filename: $name"; 
         return;
     }
+    chomp $lockfile;
     if ($Babble or not $self) {
         print "signature = $signature";
         print "name = $name\n";
@@ -502,7 +566,7 @@ sub start {
         carp "can't open file: $filename"; 
         return;
     }
-    my ($signature, $name, @values) = <CF>;
+    my ($signature, $name, $lockfile, @values) = <CF>;
     close CF;
     
     unless ( $cfg_file_sig eq $signature ) {
@@ -510,11 +574,14 @@ sub start {
         return;
     }
     chomp $name;
-    my $self  = new ($class, $name);
+    chomp $lockfile;
+    my $self  = new ($class, $name, 1, $lockfile); # quiet for lock
+    return 0 if ($lockfile and not $self);
     if ($Babble or not $self) {
         print "signature = $signature";
         print "class = $class\n";
         print "name = $name\n";
+        print "lockfile = $lockfile\n";
         if ($Babble) {
             print "values:\n";
             foreach (@values) { print "    $_"; }
@@ -1014,6 +1081,48 @@ sub alias {
     my $self = shift;
     if (@_) { $self->{ALIAS} = shift; }	# should return true for legal names
     return $self->{ALIAS};
+}
+
+sub devicetype {
+    my $self = shift;
+    if (@_) { $self->{DVTYPE} = shift; } # return true for legal names
+    return $self->{DVTYPE};
+}
+
+sub hostname {
+    my $self = shift;
+    if (@_) { $self->{HNAME} = shift; }	# return true for legal names
+    return $self->{HNAME};
+}
+
+sub hostaddr {
+    my $self = shift;
+    if (@_) { $self->{HADDR} = shift; }	# return true for assigned port
+    return $self->{HADDR};
+}
+
+sub datatype {
+    my $self = shift;
+    if (@_) { $self->{DATYPE} = shift; } # return true for legal types
+    return $self->{DATYPE};
+}
+
+sub cfg_param_1 {
+    my $self = shift;
+    if (@_) { $self->{CFG_1} = shift; }	# return true for legal param
+    return $self->{CFG_1};
+}
+
+sub cfg_param_2 {
+    my $self = shift;
+    if (@_) { $self->{CFG_2} = shift; }	# return true for legal param
+    return $self->{CFG_2};
+}
+
+sub cfg_param_3 {
+    my $self = shift;
+    if (@_) { $self->{CFG_3} = shift; }	# return true for legal param
+    return $self->{CFG_3};
 }
 
 sub buffers {
@@ -1564,6 +1673,68 @@ sub parity_enable {
     return wantarray ? @binary_opt : ($self->{"C_CFLAG"} & PARENB);
 }
 
+sub write_done {
+    return unless (@_ == 2);
+    return unless ($txdone && TIOCM_LE && $outcount);
+    my $self = shift;
+    my $wait = yes_true ( shift );
+    $self->write_drain if ($wait);
+    my $mstat = " ";
+    my $result;
+    for (;;) {
+        ioctl($self->{HANDLE}, $outcount, $mstat) || return;
+        $result = unpack('L', $mstat);
+	return (0, 0) if ($result);	# characters pending
+	ioctl($self->{HANDLE}, $txdone, $mstat) || return;
+	$result = (unpack('L', $mstat) & TIOCM_LE);
+	last unless ($wait);
+	last if ($result);		# shift register empty
+	select (undef, undef, undef, 0.02);
+    }
+    return $result ? (1, 0) : (0, 0);
+}
+
+sub modemlines {
+    return unless (@_ == 1);
+    return unless ($getstat);
+    my $self = shift;
+    my $mstat = " ";
+    ioctl($self->{HANDLE}, $getstat, $mstat) || return;
+    my $result = unpack('L', $mstat);
+    if ($Babble) {
+        printf "result = %x\n", $result;
+        print "CTS is ON\n"		if ($result & MS_CTS_ON);
+        print "DSR is ON\n"		if ($result & MS_DSR_ON);
+        print "RING is ON\n"		if ($result & MS_RING_ON);
+        print "RLSD is ON\n"		if ($result & MS_RLSD_ON);
+    }
+    return $result;
+}
+
+sub status {
+    my $self = shift;
+####    if (@_ and $testactive) {
+####        $self->{"_LATCH"} |= shift;
+####    }
+    return if (@_);
+    return unless ($incount && $outcount);
+    my @stat = (0, 0, 0, 0);
+    my $mstat = " ";
+
+    ioctl($self->{HANDLE}, $incount, $mstat) || return;
+    $stat[ST_INPUT] = unpack('L', $mstat);
+    ioctl($self->{HANDLE}, $outcount, $mstat) || return;
+    $stat[ST_OUTPUT] = unpack('L', $mstat);
+
+    if ( $Babble or $self->{"_DEBUG"} ) {
+        printf "Blocking Bits= %d\n", $stat[ST_BLOCK];
+        printf "Input Queue= %d\n", $stat[ST_INPUT];
+        printf "Output Queue= %d\n", $stat[ST_OUTPUT];
+        printf "Latched Errors= %d\n", $stat[ST_ERROR];
+    }
+    return @stat;
+}
+
 sub dtr_active {
     return unless (@_ == 2);
     return unless ($bitset && $bitclear && $dtrout);
@@ -1711,6 +1882,12 @@ sub close {
 
 	$self->{FD} = undef;
     }
+    if ($self->{LOCK}) {
+	unless ( unlink $self->{LOCK} ) {
+            nocarp or carp "can't remove lockfile: $self->{LOCK}\n"; 
+	}
+        $self->{LOCK} = "";
+    }
     $self->{NAME} = undef;
     $self->{ALIAS} = undef;
     return unless ($ok);
@@ -1725,19 +1902,8 @@ sub close {
 #      possibly cleaning up.
 
 sub DESTROY {
-    my $ok;
     my $self = shift;
-
-    if ($self->{LOCK}) {
-	$ok = unlink $self->{LOCK};
-	unless ($ok) {
-            nocarp or carp "can't remove lockfile: $self->{LOCK}\n"; 
-	}
-        $self->{LOCK} = "";
-    }
-
     return unless (defined $self->{NAME});
-
     if ($self->{"_DEBUG"}) {
         carp "Destroying $self->{NAME}";
     }
@@ -1950,7 +2116,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
 =head1 SYNOPSIS
 
-  use Device::SerialPort 0.06;
+  use Device::SerialPort qw( :PARAM :STAT 0.07 );
 
 =head2 Constructors
 
@@ -1978,6 +2144,15 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
        # or switch to a different configuration on the same port
   $PortObj->restart($Configuration_File_Name)
        || warn "Can't reread $Configuration_File_Name: $!\n";
+
+       # "app. variables" saved in $Configuration_File, not used internally
+  $PortObj->devicetype('none');     # CM11, CM17, 'weeder', 'modem'
+  $PortObj->hostname('localhost');  # for socket-based implementations
+  $PortObj->hostaddr(0);            # false unless specified
+  $PortObj->datatype('raw');        # in case an application needs_to_know
+  $PortObj->cfg_param_1('none');    # null string '' hard to save/restore
+  $PortObj->cfg_param_2('none');    # 3 spares should be enough for now
+  $PortObj->cfg_param_3('none');    # one may end up as a log file path
 
       # test suite use only
   @necessary_param = Device::SerialPort->set_test_mode_active(1);
@@ -2054,7 +2229,20 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   if ($string_in = $PortObj->input) { PortObj->write($string_in); }
      # simple echo with no control character processing
 
-  $PortObj->write_drain;  # POSIX replacement for Win32 write_done(1)
+  $ModemStatus = $PortObj->modemlines;
+  if ($ModemStatus & $PortObj->MS_RLSD_ON) { print "carrier detected"; }
+
+  ($BlockingFlags, $InBytes, $OutBytes, $ErrorFlags) = $PortObj->status;
+      # same format for compatibility. Only $InBytes and $OutBytes are
+      # currently returned (on linux). Others are 0.
+
+  ($done, $count_out) = $PortObj->write_done(0);
+     # POSIX defaults to background write. Currently $count_out always 0.
+     # $done set when hardware finished transmitting and shared line can
+     # be released for other use. Ioctl may not work on all OSs
+
+  $PortObj->write_drain;  # POSIX alternative to Win32 write_done(1)
+                          # set when software is finished transmitting
   $PortObj->purge_all;
   $PortObj->purge_rx;
   $PortObj->purge_tx;
@@ -2175,9 +2363,10 @@ create a file (containing just the current process id) at the location
 specified. This file will be automatically deleted when the C<$PortObj>
 is no longer used (by DESTROY). You would usually request C<$lockfile>
 with C<$quiet> true to disable messages while attempting to obtain
-exclusive ownership of the port via the lock. Lockfiles are VERY preliminary
-in Version 0.05. I know of intermittent timing problems with uugetty when
-attempting to use a port also used for logins.
+exclusive ownership of the port via the lock. Lockfiles are experimental
+in Version 0.07. They are intended for use with other applications. No
+attempt is made to resolve port aliases (/dev/modem == /dev/ttySx) or
+to deal with login processes such as getty and uugetty.
 
 The second constructor, B<start> is intended to simplify scripts which
 need a constant setup. It executes all the steps from B<new> to
@@ -2255,50 +2444,50 @@ One of the following: "none", "rts", "xoff".
 
 Some individual parameters (eg. baudrate) can be changed after the
 initialization is completed. These will be validated and will
-update the port as required.
+update the I<serial driver> as required. The B<save> method will
+write the current parameters to a file that B<start, tie,> and
+B<restart> can use to reestablish a functional setup.
 
-  $PortObj = new Device::SerialPort ($PortName) || die "Can't open $PortName: $!\n";
+  $PortObj = new Win32::SerialPort ($PortName, $quiet)
+       || die "Can't open $PortName: $^E\n";    # $quiet is optional
 
   $PortObj->user_msg(ON);
   $PortObj->databits(8);
   $PortObj->baudrate(9600);
   $PortObj->parity("none");
   $PortObj->stopbits(1);
-  $PortObj->handshake("rts")
+  $PortObj->handshake("rts");
 
-  $PortObj->write_settings;
+  $PortObj->write_settings || undef $PortObj;
 
+  $PortObj->save($Configuration_File_Name);
   $PortObj->baudrate(300);
+  $PortObj->restart($Configuration_File_Name);	# back to 9600 baud
 
-  $PortObj->close;
+  $PortObj->close || die "failed to close";
+  undef $PortObj;				# frees memory back to perl
 
-  undef $PortObj;  # closes port AND frees memory in perl
+=head2 Configuration Utility Methods
 
 Use B<alias> to convert the name used by "built-in" messages.
 
-  $PortObj->alias("FIDO");
+  $PortObj->alias("MODEM1");
 
-Version 0.04 adds B<pulse> methods for the I<RTS, BREAK, and DTR> bits. The
-B<pulse> methods assume the bit is in the opposite state when the method
-is called. They set the requested state, delay the specified number of
-milliseconds, set the opposite state, and again delay the specified time.
-These methods are designed to support devices, such as the X10 "FireCracker"
-control and some modems, which require pulses on these lines to signal
-specific events or data. Timing for the I<active> part of B<pulse_break_on>
-is handled by I<POSIX::tcsendbreak(0)>, which sends a 250-500 millisecond
-BREAK pulse. It is I<NOT> guaranteed to block until done.
+Starting in Version 0.07, a number of I<Application Variables> are saved
+in B<$Configuration_File>. These parameters are not used internally. But
+methods allow setting and reading them. The intent is to facilitate the
+use of separate I<configuration scripts> to create the files. Then an
+application can use B<start> as the Constructor and not bother with
+command line processing or managing its own small configuration file.
+The default values and number of parameters is subject to change.
 
-  $PortObj->pulse_break_on($milliseconds);
-  $PortObj->pulse_rts_on($milliseconds);
-  $PortObj->pulse_rts_off($milliseconds);
-  $PortObj->pulse_dtr_on($milliseconds);
-  $PortObj->pulse_dtr_off($milliseconds);
-
-In Version 0.05, these calls and the B<rts_active> and B<dtr_active> calls
-verify the parameters and any required I<ioctl constants>, and return C<undef>
-unless the call succeeds. You can use the B<can_ioctl> method to see if
-the required constants are available. On Version 0.04, the module would
-not load unless I<asm/termios.ph> was found at startup.
+  $PortObj->devicetype('none'); 
+  $PortObj->hostname('localhost');  # for socket-based implementations
+  $PortObj->hostaddr(0);            # a "false" value
+  $PortObj->datatype('raw');        # 'record' is another possibility
+  $PortObj->cfg_param_1('none');
+  $PortObj->cfg_param_2('none');    # 3 spares should be enough for now
+  $PortObj->cfg_param_3('none');
 
 =head2 Configuration and Capability Methods
 
@@ -2344,6 +2533,30 @@ an invalid or unexpected argument). Only the baudrate, parity, databits,
 stopbits, and handshake methods currently support this feature.
 
 =back
+
+=head2 Operating Methods
+
+Version 0.04 adds B<pulse> methods for the I<RTS, BREAK, and DTR> bits. The
+B<pulse> methods assume the bit is in the opposite state when the method
+is called. They set the requested state, delay the specified number of
+milliseconds, set the opposite state, and again delay the specified time.
+These methods are designed to support devices, such as the X10 "FireCracker"
+control and some modems, which require pulses on these lines to signal
+specific events or data. Timing for the I<active> part of B<pulse_break_on>
+is handled by I<POSIX::tcsendbreak(0)>, which sends a 250-500 millisecond
+BREAK pulse. It is I<NOT> guaranteed to block until done.
+
+  $PortObj->pulse_break_on($milliseconds);
+  $PortObj->pulse_rts_on($milliseconds);
+  $PortObj->pulse_rts_off($milliseconds);
+  $PortObj->pulse_dtr_on($milliseconds);
+  $PortObj->pulse_dtr_off($milliseconds);
+
+In Version 0.05, these calls and the B<rts_active> and B<dtr_active> calls
+verify the parameters and any required I<ioctl constants>, and return C<undef>
+unless the call succeeds. You can use the B<can_ioctl> method to see if
+the required constants are available. On Version 0.04, the module would
+not load unless I<asm/termios.ph> was found at startup.
 
 =head2 Stty Shortcuts
 
@@ -2513,6 +2726,21 @@ Utility subroutines and constants for parameter setting and test:
 	LONGsize	SHORTsize	nocarp		yes_true
 	OS_Error
 
+=item :STAT
+
+The Constants named BM_* and CE_* are omitted. But the MS_*
+Constants are defined for possible use with B<modemlines>. They are
+assigned to corresponding functions, but the bit position will be
+different from that on Win32.
+
+Which incoming bits are active:
+
+	MS_CTS_ON	MS_DSR_ON	MS_RING_ON	MS_RLSD_ON
+
+Offsets into the array returned by B<status:>
+
+	ST_BLOCK	ST_INPUT	ST_OUTPUT	ST_ERROR
+
 =item :ALL
 
 All of the above. Except for the I<test suite>, there is not really a good
@@ -2566,7 +2794,12 @@ Write timeouts and B<read_interval> timeouts are not currently supported.
 
 =head1 BUGS
 
-The module does not reliably open with lockfiles. Experiment if you like.
+See the limitations about lockfiles. Experiment if you like.
+
+The location of C<termios.ph> is different on other Operating Systems.
+Some may not have it at all or may use a different name. Please report
+locations you find which differ from this so I can add them to later
+versions.
 
 With all the I<currently unimplemented features>, we don't need any more.
 But there probably are some.
@@ -2577,7 +2810,6 @@ __Please send comments and bug reports to wcbirthisel@alum.mit.edu.
 
 =head2 Win32::SerialPort Functions Not Currently Supported
 
-  ($BlockingFlags, $InBytes, $OutBytes, $ErrorFlags) = $PortObj->status;
   $LatchErrorFlags = $PortObj->reset_error;
 
   $PortObj->read_interval(100);		# max time between read char
@@ -2594,7 +2826,7 @@ __Please send comments and bug reports to wcbirthisel@alum.mit.edu.
 
 =head2 Win32::SerialPort Functions Not Ported to POSIX
 
-	modemlines	transmit_char
+	transmit_char
 
 =head2 Win32API::CommPort Functions Not Ported to POSIX
 
@@ -2607,9 +2839,8 @@ __Please send comments and bug reports to wcbirthisel@alum.mit.edu.
 	is_read_buf	is_write_buf	is_buffers	is_read_interval
 	is_error_char	resume_tx	is_stopbits	is_write_const_time
 	is_binary	is_status	write_bg	is_parity_enable
-	is_modemlines	read_bg		read_done	write_bg
+	is_modemlines	read_bg		read_done	break_active
 	xoff_active	is_read_buf	is_write_buf	xon_active
-	write_done	break_active
 
 =head2 "raw" Win32 API Calls and Constants
 
@@ -2618,10 +2849,6 @@ these are only available in Win32::SerialPort and Win32API::CommPort
 as optional Exports. The list includes the following:
 
 =over 4
-
-=item :STAT
-
-The Constants named BM_*, MS_*, CE_*, and ST_*
 
 =item :RAW
 
@@ -2673,6 +2900,6 @@ Perltoot.xxx - Tom (Christiansen)'s Object-Oriented Tutorial
 Copyright (C) 1999, Bill Birthisel. All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. 11 August 1999.
+under the same terms as Perl itself. 7 Sepember 1999.
 
 =cut

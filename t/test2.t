@@ -8,9 +8,9 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..39\n"; }
+BEGIN { $| = 1; print "1..46\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Device::SerialPort 0.06;
+use Device::SerialPort 0.07;
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
@@ -105,84 +105,99 @@ is_ok ($ob->read_char_time == 0);		# 9
 is_ok ($ob->alias eq "TestPort");		# 10
 is_ok ($ob->parity_enable == 0);		# 11
 
-# 12 - 14: "Instant" return for read_xx_time=0
+#### 12 - 18: Application Parameter Defaults
+
+is_ok ($ob->devicetype eq 'none');		# 12
+is_ok ($ob->hostname eq 'localhost');		# 13
+is_zero ($ob->hostaddr);			# 14
+is_ok ($ob->datatype eq 'raw');			# 15
+is_ok ($ob->cfg_param_1 eq 'none');		# 16
+is_ok ($ob->cfg_param_2 eq 'none');		# 17
+is_ok ($ob->cfg_param_3 eq 'none');		# 18
+
+# 19 - 21: "Instant" return for read_xx_time=0
 
 $tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(10);
 $tock=$ob->get_tick_count;
 
-is_zero ($in);					# 12
-is_bad ($in2);					# 13
+is_zero ($in);					# 19
+is_bad ($in2);					# 20
 $out=$tock - $tick;
-is_ok ($out < 150);				# 14
+is_ok ($out < 150);				# 21
 print "<0> elapsed time=$out\n";
-
-print "Beginning Timed Tests at 2-5 Seconds per Set\n";
-
-# 15 - 18: 2 Second Constant Timeout
-
-is_ok (2000 == $ob->read_const_time(2000));	# 15
-$tick=$ob->get_tick_count;
-($in, $in2) = $ob->read(10);
-$tock=$ob->get_tick_count;
-
-is_zero ($in);					# 16
-is_bad ($in2);					# 17
-$out=$tock - $tick;
-is_bad (($out < 1800) or ($out > 2400));	# 18
-print "<2000> elapsed time=$out\n";
 
 if ($naptime) {
     print "++++ page break\n";
     sleep $naptime;
 }
 
-# 19 - 22: 4 Second Timeout Constant+Character
+print "Beginning Timed Tests at 2-5 Seconds per Set\n";
 
-is_ok (100 == $ob->read_char_time(100));	# 19
+# 22 - 25: 2 Second Constant Timeout
+
+is_ok (2000 == $ob->read_const_time(2000));	# 22
+$tick=$ob->get_tick_count;
+($in, $in2) = $ob->read(10);
+$tock=$ob->get_tick_count;
+
+is_zero ($in);					# 23
+is_bad ($in2);					# 24
+$out=$tock - $tick;
+is_bad (($out < 1800) or ($out > 2400));	# 25
+print "<2000> elapsed time=$out\n";
+
+# 26 - 29: 4 Second Timeout Constant+Character
+
+is_ok (100 == $ob->read_char_time(100));	# 26
 
 $tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(20);
 $tock=$ob->get_tick_count;
 
-is_zero ($in);					# 20
-is_bad ($in2);					# 21
+is_zero ($in);					# 27
+is_bad ($in2);					# 28
 $out=$tock - $tick;
-is_bad (($out < 3800) or ($out > 4400));	# 22
+is_bad (($out < 3800) or ($out > 4400));	# 29
 print "<4000> elapsed time=$out\n";
 
 
-# 23 - 26: 3 Second Character Timeout
+# 30 - 34: 3 Second Character Timeout
 
-is_zero ($ob->read_const_time(0));		# 23
+is_zero ($ob->read_const_time(0));		# 30
 
 $tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(30);
 $tock=$ob->get_tick_count;
 
-is_zero ($in);					# 24
-is_bad ($in2);					# 25
+is_zero ($in);					# 31
+is_bad ($in2);					# 32
 $out=$tock - $tick;
-is_bad (($out < 2800) or ($out > 3400));	# 26
+is_bad (($out < 2800) or ($out > 3400));	# 33
 print "<3000> elapsed time=$out\n";
 
-is_zero ($ob->read_char_time(0));		# 27
+is_zero ($ob->read_char_time(0));		# 34
 
-is_ok ("rts" eq $ob->handshake("rts"));		# 28
-is_ok ($ob->purge_rx);				# 29 
-is_ok ($ob->purge_all);				# 30 
-is_ok ($ob->purge_tx);				# 31 
+is_ok ("rts" eq $ob->handshake("rts"));		# 35
+is_ok ($ob->purge_rx);				# 36 
+is_ok ($ob->purge_all);				# 37 
+is_ok ($ob->purge_tx);				# 38 
 
-is_ok(1 == $ob->user_msg);			# 32
-is_zero(scalar $ob->user_msg(0));		# 33
-is_ok(1 == $ob->user_msg(1));			# 34
-is_ok(1 == $ob->error_msg);			# 35
-is_zero(scalar $ob->error_msg(0));		# 36
-is_ok(1 == $ob->error_msg(1));			# 37
+if ($naptime) {
+    print "++++ page break\n";
+    sleep $naptime;
+}
+
+is_ok(1 == $ob->user_msg);			# 39
+is_zero(scalar $ob->user_msg(0));		# 40
+is_ok(1 == $ob->user_msg(1));			# 41
+is_ok(1 == $ob->error_msg);			# 42
+is_zero(scalar $ob->error_msg(0));		# 43
+is_ok(1 == $ob->error_msg(1));			# 44
 
 undef $ob;
 
-# 38 - 39: Reopen tests (unconfirmed) $ob->close via undef
+# 45 - 46: Reopen tests (unconfirmed) $ob->close via undef
 
 sleep 1;
 unless (is_ok ($ob = Device::SerialPort->start ($cfgfile))) {
@@ -190,5 +205,5 @@ unless (is_ok ($ob = Device::SerialPort->start ($cfgfile))) {
     exit 1;
     # next test would die at runtime without $ob
 }
-is_ok(1 == $ob->close);				# 39
+is_ok(1 == $ob->close);				# 46
 undef $ob;

@@ -8,9 +8,9 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..131\n"; }
+BEGIN { $| = 1; print "1..173\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Device::SerialPort 0.06;
+use Device::SerialPort qw( :STAT 0.07 );
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
@@ -77,7 +77,9 @@ if (@ARGV) {
 }
 
 my $cfgfile = "$file"."_test.cfg";
+my $tstlock = "$file"."_lock.cfg";
 $cfgfile =~ s/.*\///;
+$tstlock =~ s/.*\///;
 
 my $fault = 0;
 my $ob;
@@ -237,7 +239,6 @@ is_ok(1 == grep(/^$in$/, @opts));		# 53
 
 is_bad(scalar $ob->handshake("moo"));		# 54
 is_ok($in = $ob->handshake("rts"));		# 55
-    # leaves "rts" pending for status
 
 ## 56 - 61: Buffer Size
 
@@ -331,7 +332,7 @@ undef $ob;
 ## 87 - 89: Check File Headers
 
 is_ok(open CF, "$cfgfile");			# 87
-my ($signature, $name, @values) = <CF>;
+my ($signature, $name, $lockfile, @values) = <CF>;
 close CF;
 
 is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 88
@@ -339,7 +340,10 @@ is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 88
 chomp $name;
 is_ok($name eq $file);				# 89
 
-## 90 - 91: Check that Values listed exactly once
+chomp $lockfile;
+is_ok($lockfile eq "");				# 90
+
+## 91 - 92: Check that Values listed exactly once
 
 $fault = 0;
 foreach $e (@values) {
@@ -348,18 +352,18 @@ foreach $e (@values) {
     $fault++ if ($out eq "");
     $required_param{$in}++;
     }
-is_zero($fault);				# 90
+is_zero($fault);				# 91
 
 $fault = 0;
 foreach $e (@necessary_param) {
     $fault++ unless ($required_param{$e} ==1);
     }
-is_zero($fault);				# 91
+is_zero($fault);				# 92
 
 
-## 92 - 126: Reopen as (mostly 5.003 Compatible) Tie
+## 93 - 110: Reopen as (mostly 5.003 Compatible) Tie
 
-    # constructor = TIEHANDLE method		# 92
+    # constructor = TIEHANDLE method		# 93
 unless (is_ok ($ob = tie(*PORT,'Device::SerialPort', $cfgfile))) {
     printf "could not reopen port from $cfgfile\n";
     exit 1;
@@ -369,13 +373,13 @@ unless (is_ok ($ob = tie(*PORT,'Device::SerialPort', $cfgfile))) {
     # tie to PRINT method
 $tick=$ob->get_tick_count;
 $pass=print PORT $line;
-is_ok(1 == $ob->write_drain);			# 93
+is_ok(1 == $ob->write_drain);			# 94
 $tock=$ob->get_tick_count;
 
-is_ok($pass == 1);				# 94
+is_ok($pass == 1);				# 95
 
 $err=$tock - $tick;
-is_bad (($err < 160) or ($err > 245));		# 95
+is_bad (($err < 160) or ($err > 245));		# 96
 print "<195> elapsed time=$err\n";
 
     # tie to PRINTF method
@@ -387,16 +391,16 @@ if ( $] < 5.004 ) {
 else {
     $pass=printf PORT "123456789_%s_987654321", $line;
 }
-is_ok(1 == $ob->write_drain);			# 96
+is_ok(1 == $ob->write_drain);			# 97
 $tock=$ob->get_tick_count;
 
-is_ok($pass == 1);				# 97
+is_ok($pass == 1);				# 98
 $err=$tock - $tick;
-is_bad (($err < 180) or ($err > 265));		# 98
+is_bad (($err < 180) or ($err > 265));		# 99
 print "<215> elapsed time=$err\n";
 
-is_ok (300 == $ob->read_const_time(300));	# 99
-is_ok (20 == $ob->read_char_time(20));		# 100
+is_ok (300 == $ob->read_const_time(300));	# 100
+is_ok (20 == $ob->read_char_time(20));		# 101
 $tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(10);
 $tock=$ob->get_tick_count;
@@ -406,108 +410,215 @@ if ($naptime) {
     sleep $naptime;
 }
 
-is_zero ($in);					# 101
-is_ok ($in2 eq "");				# 102
+is_zero ($in);					# 102
+is_ok ($in2 eq "");				# 103
 
 $err=$tock - $tick;
-is_bad (($err < 475) or ($err > 585));		# 103
+is_bad (($err < 475) or ($err > 585));		# 104
 print "<500> elapsed time=$err\n";
 
-is_ok (0 == $ob->read_char_time(0));		# 104
+is_ok (0 == $ob->read_char_time(0));		# 105
 $tick=$ob->get_tick_count;
 $in2= getc PORT;
 $tock=$ob->get_tick_count;
 
-is_bad (defined $in2);				# 105
+is_bad (defined $in2);				# 106
 $err=$tock - $tick;
-is_bad (($err < 275) or ($err > 365));		# 106
+is_bad (($err < 275) or ($err > 365));		# 107
 print "<300> elapsed time=$err\n";
 
-is_ok (0 == $ob->read_const_time(0));		# 107
+is_ok (0 == $ob->read_const_time(0));		# 108
 $tick=$ob->get_tick_count;
 $in2= getc PORT;
 $tock=$ob->get_tick_count;
 
-is_bad (defined $in2);				# 108
+is_bad (defined $in2);				# 109
 $err=$tock - $tick;
-is_bad ($err > 50);				# 109
+is_bad ($err > 50);				# 110
 print "<0> elapsed time=$err\n";
 
-## 110 - 114: Bad Port (new + quiet)
+## 111 - 115: Bad Port (new + quiet)
 
-$file = "/dev/badport";
+my $file2 = "/dev/badport";
 my $ob2;
-is_bad ($ob2 = Device::SerialPort->new ($file));	# 110
-is_bad (defined $ob2);					# 111
-is_zero ($ob2 = Device::SerialPort->new ($file, 1));	# 112
-is_bad ($ob2 = Device::SerialPort->new ($file, 0));	# 113
-is_bad (defined $ob2);					# 114
+is_bad ($ob2 = Device::SerialPort->new ($file2));	# 111
+is_bad (defined $ob2);					# 112
+is_zero ($ob2 = Device::SerialPort->new ($file2, 1));	# 113
+is_bad ($ob2 = Device::SerialPort->new ($file2, 0));	# 114
+is_bad (defined $ob2);					# 115
 
 if ($naptime) {
     print "++++ page break\n";
     sleep $naptime;
 }
 
-## 115 - 130: Output bits and pulses
+## 116 - 131: Output bits and pulses
 
 if ($ob->can_ioctl) {
-    is_ok ($ob->dtr_active(0));			# 115
+    is_ok ($ob->dtr_active(0));			# 116
     $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_dtr_on(100));		# 116
+    is_ok ($ob->pulse_dtr_on(100));		# 117
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 180) or ($err > 265));	# 117
+    is_bad (($err < 180) or ($err > 265));	# 118
     print "<200> elapsed time=$err\n";
     
-    is_ok ($ob->dtr_active(1));			# 118
+    is_ok ($ob->dtr_active(1));			# 119
     $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_dtr_off(200));		# 119
+    is_ok ($ob->pulse_dtr_off(200));		# 120
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 370) or ($err > 485));	# 120
+    is_bad (($err < 370) or ($err > 485));	# 121
     print "<400> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 121
+    is_ok ($ob->rts_active(0));			# 122
     $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_on(150));		# 122
+    is_ok ($ob->pulse_rts_on(150));		# 123
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 275) or ($err > 365));	# 123
+    is_bad (($err < 275) or ($err > 365));	# 124
     print "<300> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(1));			# 124
+    is_ok ($ob->rts_active(1));			# 125
     $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_on(50));		# 125
+    is_ok ($ob->pulse_rts_off(50));		# 126
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 80) or ($err > 145));	# 126
+    is_bad (($err < 80) or ($err > 145));	# 127
     print "<100> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 127
-    is_ok ($ob->dtr_active(0));			# 128
+    is_ok ($ob->rts_active(0));			# 128
+    is_ok ($ob->dtr_active(0));			# 129
+    is_ok("rts" eq $ob->handshake("rts"));	# 130
+
+        # for an unconnected port, should be $in=0, $out=0, $blk=0, $err=0
+    ($blk, $in, $out, $err) = $ob->status;
+    is_zero($out);				# 131
+    is_ok(188 == $ob->write($line));		# 132
+    ($blk, $in, $out, $err) = $ob->status;
+    is_zero($blk);				# 133
+
+    if ($naptime) {
+        print "++++ page break\n";
+        sleep $naptime;
+    }
+
+    is_zero($in);				# 134
+    is_ok(188 == $out);				# 135
+    is_zero($err);				# 136
+    ($out, $err) = $ob->write_done(0);
+    is_zero($out);				# 137
+
+    $tick=$ob->get_tick_count;
+    is_ok("none" eq $ob->handshake("none"));	# 138
+    ($out, $err) = $ob->write_done(0);
+    is_zero($out);				# 139
+    ($out, $err) = $ob->write_done(1);
+    $tock=$ob->get_tick_count;
+
+    is_ok(1 == $out);				# 140
+    $err=$tock - $tick;
+    is_bad (($err < 170) or ($err > 255));	# 141
+    print "<200> elapsed time=$err\n";
+    ($blk, $in, $out, $err) = $ob->status;
+    is_zero($out);				# 142
+    is_ok(MS_CTS_ON);				# 143
+    is_ok(MS_DSR_ON);				# 144
+    is_ok(MS_RING_ON);				# 145
+    is_ok(MS_RLSD_ON);				# 146
+    $blk = MS_CTS_ON | MS_DSR_ON | MS_RING_ON | MS_RLSD_ON;
+    is_zero($blk & $ob->modemlines);			# 147
 }
 else {
     print "bypassing ioctl tests\n";
-    while ($tc < 128.1) { is_ok (1); }		# 115-128
+    while ($tc < 133.1) { is_ok (1); }		# 116-133
+
+    if ($naptime) {
+        print "++++ page break\n";
+        sleep $naptime;
+    }
+
 	# test number must change to match preceeding loop
+    while ($tc < 147.1) { is_ok (1); }		# 134-147
 }
 
+is_zero(ST_BLOCK);				# 148
+is_ok(1 == ST_INPUT);				# 149
+is_ok(2 == ST_OUTPUT);				# 150
+is_ok(3 == ST_ERROR);				# 151
+
 $tick=$ob->get_tick_count;
-is_ok ($ob->pulse_break_on(250));		# 129
+is_ok ($ob->pulse_break_on(250));		# 152
 $tock=$ob->get_tick_count;
 $err=$tock - $tick;
-is_bad (($err < 235) or ($err > 900));		# 130
+is_bad (($err < 235) or ($err > 900));		# 153
 print "<500> elapsed time=$err\n";
+
+if ($naptime) {
+    print "++++ page break\n";
+    sleep $naptime;
+}
 
     # destructor = CLOSE method
 if ( $] < 5.005 ) {
-    is_ok($ob->close);				# 131
+    is_ok($ob->close);				# 154
 }
 else {
-    is_ok(close PORT);				# 131
+    is_ok(close PORT);				# 154
 }
 
     # destructor = DESTROY method
 undef $ob;					# Don't forget this one!!
 untie *PORT;
 
+#### 155 - 162: Lock File Tests
+
+unlink $tstlock;
+is_bad (-e $tstlock);				# 155
+
+is_ok ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 156
+is_ok (-e $tstlock);				# 157
+is_ok (-s $tstlock);				# 158
+
+is_ok ($ob->restart($cfgfile));			# 159
+sleep 1;
+my $cfg2 = "tmp.$cfgfile";
+is_ok(scalar $ob->save($cfg2));			# 160
+is_ok($ob->close);				# 161
+sleep 1;
+is_bad (-e $tstlock);				# 162
+
+#### 163 - 166: Lock from Configuration File with DESTROY
+
+is_ok ($ob = Device::SerialPort->start ($cfg2));	# 163
+is_ok (-e $tstlock);				# 164
+is_ok (-s $tstlock);				# 165
+undef $ob;
+
+sleep 1;
+is_bad (-e $tstlock);				# 166
+
+## 167 - 169: Repeat with Lock SET
+
+is_ok(open LF, ">$tstlock");			# 167
+print LF "$$\n";
+close LF;
+
+is_zero ($ob = Device::SerialPort->start ($cfg2));		# 168
+is_zero ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 169
+unlink $tstlock;
+
+## 170 - 173: Check File Headers with Lock
+
+is_ok(open CF, "$cfg2");			# 170
+($signature, $name, $lockfile, @values) = <CF>;
+close CF;
+
+is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 171
+
+chomp $name;
+is_ok($name eq $file);				# 172
+
+chomp $lockfile;
+is_ok($lockfile eq $tstlock);			# 173
+unlink $cfg2;

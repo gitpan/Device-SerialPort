@@ -1,5 +1,5 @@
 Device::SerialPort
-VERSION=0.06, 13 August 1999
+VERSION=0.07, 7 September 1999
 
 Hello Serial Port users:
 
@@ -15,13 +15,19 @@ functions implemented using POSIX calls. While most of the testing has
 occurred on linux, the package should work on other POSIX-compliant
 Operating Systems.
 
-This is a MAJOR release. Most of the functions from Win32::SerialPort
-are now available. Almost all the demos and examples work with minimal
-modifications. Many of the methods are new with this release, so expect
-a few bugs and consider everything experimental. But the intent is to
-"clone" the corresponding features of the Win32::SerialPort module
-whenever practical - see the documentation for that module as well as
-this one for details.
+Most of the functions from Win32::SerialPort are now available. Almost
+all the demos and examples work with minimal modifications. Many of the
+methods are new with this release or 0.06, so expect a few bugs and
+consider everything experimental. But the intent is to "clone" the
+corresponding features of the Win32::SerialPort module whenever
+practical - see the documentation for that module as well as this one
+for details.
+
+Version 0.07 improved the lockfile support, added some application
+variables that are saved in the configuration_file, and added the
+ioctl-based methods status, modemlines, and write_done. These act
+mostly like their Win32 cousins. Since they use ioctls, they are
+only available on systems that "can_ioctl".
 
 There are a small number of ioctl calls to handle the RTS and DTR
 outputs. Those require (from more or less traditional locations) the
@@ -37,7 +43,7 @@ This module does not require a compiler or use XS. Since everything is
 (convoluted but still pure) perl, you can fix flaws and change limits
 if required. But please file a bug report if you do. I have tested with
 Perl 5.005_02 on Redhat 5.2. Some testing has occurred on AIX and Solaris
-as well.  This is the fourth alpha release.
+as well.  This is the first beta release.
 
 COMPATIBILITY NOTES:
 
@@ -64,6 +70,9 @@ COMPATIBILITY NOTES:
 5. The save, start, and restart methods are now supported. The format of
    the configuration_file is not identical to the Win32 one.
 
+6. Version 0.07 changes parts of the configuration_file. You will need
+   to save a new one - files from previous versions will not work.
+
 See the NOTES and KNOWN LIMITATIONS in the SerialPort documentation. The
 ".pod" is embedded in the ".pm". The comments on "-w" and "use strict"
 are especially relevant when you start calling this module from your own
@@ -87,6 +96,7 @@ FILES:
     t/test3.t		- Inheritance and export version of test1.t
     t/test4.t		- Inheritance version of test2.t and "restart"
 
+    eg/any_os.plx	- cross-platform "conditional use" demo
     eg/demo1.plx	- talks to a "really dumb" terminal
     eg/demo2.plx	- "poor man's" readline and chatV
     eg/demo3.plx	- looks like a setup menu - but only looks :-(
@@ -96,12 +106,14 @@ FILES:
     eg/demo7.plx	- a Perl/Tk based terminal, event loop and callbacks
     eg/demo8.plx	- command line terminal emulator with Term::Readkey
     eq/options.plx	- post-install test that prints available options
-    eg/example1.txt	- example from The Perl Journal #13 (minimal mods)
-    eg/example2.txt	- example from The Perl Journal #13 (minimal mods)
-    eg/example3.txt	- example from The Perl Journal #13 (minimal mods)
-    eg/example4.txt	- example from The Perl Journal #13 (minimal mods)
-    eg/example5.txt	- example from The Perl Journal #13 (minimal mods)
-    eg/example6.txt	- example from The Perl Journal #13 (minimal mods)
+    eg/example1.txt	- examples from The Perl Journal #13
+    eg/example2.txt	- (minimal mods for cross-platform use)
+    eg/example3.txt
+    eg/example4.txt
+    eg/example5.txt
+    eg/example6.txt
+    eg/example7.txt
+    eg/example8.txt
 
 INSTALL and TEST:
 
@@ -182,8 +194,9 @@ Demo8.plx is a simple command-line terminal emulator contributed by
 Andrej Mikus.
 
 The Perl Journal #13 included an article on Controlling a Modem with
-Win32::SerialPort. Slightly revised versions of the first 6 Examples
-from the article are included in the "eg" subdirectory.
+Win32::SerialPort. Slightly revised versions of all the Examples
+from the article are included in the "eg" subdirectory. The revisions
+cover cross-platform use and workarounds for small timing differences.
 
 Please tell me what does and what doesn't work. The module has proven
 to be pretty robust. But I can't test all possible configurations.
