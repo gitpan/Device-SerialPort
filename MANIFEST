@@ -1,7 +1,8 @@
 Changes
-Device-SerialPort.html
 modemtest
 MANIFEST
+configure
+config.h.in
 Makefile.PL
 README
 TODO
@@ -29,3 +30,11 @@ t/test1.t
 t/test2.t
 t/test3.t
 t/test4.t
+autotools/config.guess
+autotools/config.rpath
+autotools/config.sub
+autotools/depcomp
+autotools/install-sh
+autotools/missing
+autotools/mkinstalldirs
+show-tiocm.c.test

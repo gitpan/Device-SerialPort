@@ -1,5 +1,5 @@
 Device::SerialPort
-VERSION=0.09, 25 Jan 2001
+VERSION=0.15, 2003 Jun 12
 
 Hello Serial Port users:
 
@@ -29,25 +29,13 @@ ioctl-based methods status, modemlines, and write_done. These act
 mostly like their Win32 cousins. Since they use ioctls, they are
 only available on systems that "can_ioctl".
 
-There are a small number of ioctl calls to handle the RTS and DTR
-outputs. Those require (from more or less traditional locations) the
-outputs from "h2ph" for ioctl.h and related files. If the module does
-not find the prerequisites, it disables the method calls that require
-them and sets "can_ioctl" false.
-	.../_h2ph_pre.ph	.../asm/termios.ph
-	.../asm/termbits.ph	.../asm/posix_types.ph
-	.../asm/ioctls.ph	.../asm/ioctl.ph
-	.../linux/posix_types.ph
-
-This module does not require a compiler or use XS. Since everything is
-(convoluted but still pure) perl, you can fix flaws and change limits
-if required. But please file a bug report if you do. I have tested with
-Perl 5.005_02 on Redhat 5.2. Some testing has occurred on AIX and Solaris
-as well.
-
 Version 0.09 adds further compatibility for other OSes, including AIX,
 Solaris, and OpenBSD.  Kees Cook is now maintaining this code for use
-with the Sendpage tool (http://sendpage.cpoint.net/).  
+with the Sendpage tool (http://sendpage.org/).  
+
+Version 0.15 uses XS to figure out the serial/modem bits needed to do
+all the state fiddling.  Pay close attention to the "configure" output
+warnings to find out about possible broken things on your system.
 
 COMPATIBILITY NOTES:
 
@@ -55,36 +43,30 @@ COMPATIBILITY NOTES:
    just SerialPort.pm. The examples in alpha version 0.02 (limited
    release only) work fine when the Namespace is updated.
 
-2. The Tied FileHandle support works fully on 5.005, mostly on 5.004,
-   and essentially NOT on 5.003. This is due to the level of support
-   in the underlying Perl - not to the module implementation. The module
-   supports all tie methods and even handles output_separators.
-
-3. Unlike Win32::SerialPort, this distribution uses Makefile.PL and the
+2. Unlike Win32::SerialPort, this distribution uses Makefile.PL and the
    "standard" install sequence for CPAN modules:
 	perl Makefile.PL
 	make
 	make test
 	make install
 
-4. The GetTickCount method has been renamed to get_tick_count to conform
+3. The GetTickCount method has been renamed to get_tick_count to conform
    to normal naming style. A corresponding method has been added to the
    Win32 version to facilitate portability.
 
-5. The save, start, and restart methods are now supported. The format of
+4. The save, start, and restart methods are now supported. The format of
    the configuration_file is not identical to the Win32 one.
 
-6. Version 0.07 changes parts of the configuration_file. You will need
+5. Version 0.07 changes parts of the configuration_file. You will need
    to save a new one - files from previous versions will not work.
 
-7. OpenBSD does NOT support getting modem lines (!?), so that test will
-   fail, and no carrier detection will be possible.  This is being
-   worked on.
-
-8. Right now, AIX will also fail some of the tests, including setting
+6. Right now, AIX will also fail some of the tests, including setting
    hardware flow control.  I'm working on fixing this.
 
-9. For Solaris, see the "SOLARIS TROUBLE" section below.
+7. For Solaris, see the "SOLARIS TROUBLE" section below.
+
+8. Please only use "read(255)" unless you've tested other reading methods.
+   There have been reports of dropped characters using other functions.
 
 See the NOTES and KNOWN LIMITATIONS in the SerialPort documentation. The
 ".pod" is embedded in the ".pm". The comments on "-w" and "use strict"
@@ -98,10 +80,14 @@ FILES:
 
     Changes		- for history lovers
     Makefile.PL		- the "starting point" for traditional reasons
-    MANIFEST		- file list
+    configure           - used to find the correct headers for SerialPort.xs
+    config.h.in         - used to build config.h, used by SerialPort.xs
+    MANIFEST		- distribution file list
     README		- this file
-    Device-SerialPort.html	- documentation
     SerialPort.pm	- the reason you're reading this
+    SerialPort.xs       - the C code to get all the serial bits from .h files
+    modemtest           - quick tool for checking on serial port
+    show-tiocm.c        - simple C tool to report TIOCM* hacks
 
     t			- test directory
     t/Altport.pm	- stub for inheritance test
@@ -128,6 +114,8 @@ FILES:
     eg/example6.txt
     eg/example7.txt
     eg/example8.txt
+
+    autotools/*         - various tools used by the "configure" script
 
 INSTALL and TEST:
 
@@ -162,10 +150,8 @@ prompt.
 
 SOLARIS TROUBLE:
 
-	  Some headers under Solaris don't behave very well, so I had
-          to define "__sparc" explicitly in Device::SerialPort.
+	  The big problem is with Solaris' handling of DTR. 
 
-	  However, the big problem is with Solaris' handling of DTR. 
           Depending on hardware, patchlevel, or something very mystical, if
 	  you have an "se" or "zs" serial port (run "modinfo | grep serial"
 	  to find out), you may need to correct this DTR bug by adding a
@@ -198,7 +184,7 @@ SOLARIS TROUBLE:
 
           So, since I have zs serial ports on my Sun, I added the line:
 
-                set set zs:default_dtrlow = 0
+                set zs:default_dtrlow=0
 
           so I could toggle the DTR rapidly.
 
@@ -265,15 +251,16 @@ Don't trust it for anything important without complete testing.
 
 And watch for updates at:
 
-%%%% http://sendpage.cpoint.net/device-serialport/
+%%%% http://sendpage.org/device-serialport/
 
 or CPAN under authors/id/C/CO/COOK or Device::SerialPort
 
 Thanks,
 
--bill
-(and now Kees Cook <cook@cpoint.net>)
+-Kees <kees@outflux.net>
 
-Copyright (C) 1999, Bill Birthisel, 2001, Kees Cook. All rights reserved.
+Copyright (C) 1999, Bill Birthisel. All rights reserved.
+Copyright (C) 2001-2003 Kees Cook. All rights reserved.
 This module is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
+

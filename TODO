@@ -1,7 +1,7 @@
-Last updated Feb 13, 2001
+Last updated Jun 12, 2003
 
-
-- fix OpenBSD modem flag reading
 - fix AIX hardware flow control
+- fix lockfile support
+- spread POD docs out across the module
 
 

@@ -1,222 +1,38 @@
-# Note: This is a POSIX version of the Win32::Serialport module
-#       ported by Joe Doss, Kees Cook 
-#       for use with the MisterHouse and Sendpage programs
-
-# Prototypes for ioctl constants do not match POSIX constants
-# so put them into implausible namespace and call them there
+# This is a POSIX version of the Win32::Serialport module
+# ported by Joe Doss, Kees Cook 
+# Originally for use with the MisterHouse and Sendpage programs
 #
-# It appears this is a long standing issue. In Changes5.002,
-# NETaa14422, Larry Wall comments, "It's almost like you want an
-# AUTOPROTO to go with your AUTOLOAD." POSIX.pm was his example.
-
-package SerialJunk;
-use POSIX qw(uname);
-
-$VERBOSE=0; # turn on for verbose ph hunting...
-$DEBUG=0; # turn this on to debug the *.ph hunting...
-
-# Auto-ioctl settings are now hunted down and verified.
-#  - Kees Cook, Sep 2000
-
-use vars qw($ioctl_ok);
-$ioctl_ok = 0;
-
-# Needed on some misbehaving Solaris machines... (h2ph's fault...) -Kees
-($sysname, $nodename, $release, $version, $machine) = POSIX::uname();
-if ($sysname eq "SunOS" && $machine =~ /^sun/) {
-	eval "sub __sparc () {1;}";
-}
-
-# Need to determine location (Linux, Solaris, AIX, BSD known & working)
-@LOCATIONS=(	
-                'termios.ph',     # Linux
-                'asm/termios.ph', # Linux
-		'sys/termiox.ph', # AIX
-                'sys/termios.ph', # AIX, OpenBSD
-                'sys/ttycom.ph'   # OpenBSD
-);
-foreach $loc (@LOCATIONS) {
-   print "trying '$loc'... " if ($VERBOSE);
-   eval {
-	# silence .ph warnings
-	local $SIG{'__WARN__'}=sub { };
-
-	require "$loc";
-   };
-   if ($@) {
-      print "nope\n" if ($VERBOSE);
-      print "\tDevice::Serial error: $@\n" if ($DEBUG);
-      next;
-   }
-
-   $benefit=0;
-
-   # do we have everything we need yet?
-   if (!defined($got{'hardflow'}) &&
-	(defined(&SerialJunk::CRTSCTS) || defined(&SerialJunk::CTSXON))) {
-        $got{'hardflow'}=1;
-	if (defined(&SerialJunk::CRTSCTS)) {
-	        print "(CRTSCTS) " if ($VERBOSE);
-	} else {
-        	print "(CTSXON) " if ($VERBOSE);
-	}
-        $benefit=1;
-   }
-   if (!defined($got{'TIOCMBIS'}) && defined(&SerialJunk::TIOCMBIS)) {
-        $got{'TIOCMBIS'}=1;
-        print "(TIOCMBIS) " if ($VERBOSE);
-        $benefit=1;
-   }
-   if (!defined($got{'TIOCMBIC'}) && defined(&SerialJunk::TIOCMBIC)) {
-        $got{'TIOCMBIC'}=1;
-        print "(TIOCMBIC) " if ($VERBOSE);
-        $benefit=1;
-   }
-   if (!defined($got{'TIOCMGET'}) && defined(&SerialJunk::TIOCMGET)) {
-        $got{'TIOCMGET'}=1;
-        print "(TIOCMGET) " if ($VERBOSE);
-        $benefit=1;
-   }
-   if (defined(&SerialJunk::TIOCSDTR)) {
-        print "(TIOCSDTR) " if ($VERBOSE);
-        $got{'dtrset'}=1;
-        $benefit=1;
-   }
-   if (defined(&SerialJunk::TIOCCDTR)) {
-        print "(TIOCCDTR) " if ($VERBOSE);
-       	$got{'dtrclear'}=1;
-        $benefit=1;
-   }
-   if (defined(&SerialJunk::TIOCM_DTR)) {
-        print "(TIOCM_DTR) " if ($VERBOSE);
-       	$got{'dtr'}=1;
-        $benefit=1;
-   }
-   if ($benefit == 1) {
-        push(@using, $loc);
-	print "useful\n" if ($VERBOSE);
-   }
-   else {
-        print "not useful\n" if ($VERBOSE);
-   }
-   if ((($got{'dtrset'} && $got{'dtrclear'}) || $got{'dtr'}) &&
-	$got{'hardflow'} && $got{'TIOCMBIS'} &&
-        $got{'TIOCMBIC'} && $got{'TIOCMGET'}) {
-                $ioctl_ok = 1;
-                print "\nNeeded '".
-                        join("', '",@using)."'\n" if ($VERBOSE);
-                last;
-   }
-}
-if ($ioctl_ok == 0) {
-   warn "Device::Serial could not find ioctl definitions!\n";
-}
-
+# $Id:$
+#
+# Copyright (C) 2003 Kees Cook
+# kees@outflux.net, http://outflux.net/
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# http://www.gnu.org/copyleft/gpl.html
+#
 package Device::SerialPort;
 
+use 5.006;
+use strict;
+use warnings;
 use POSIX qw(:termios_h);
 use IO::Handle;
-
-use vars qw($bitset $bitclear $rtsout $dtrout $getstat $incount $outcount
-	    $txdone $dtrset $dtrclear $termioxflow $tcgetx $tcsetx);
-if ($SerialJunk::ioctl_ok) {
-  eval {
-    # silence .ph warnings
-    local $SIG{'__WARN__'}=sub { };
-
-    $bitset = &SerialJunk::TIOCMBIS;
-    $bitclear = &SerialJunk::TIOCMBIC;
-    $getstat = &SerialJunk::TIOCMGET;
-    $incount = defined(&SerialJunk::TIOCINQ) ? &SerialJunk::TIOCINQ : 0;
-    $outcount = defined(&SerialJunk::TIOCOUTQ) ? &SerialJunk::TIOCOUTQ : 0;
-    $txdone = defined(&SerialJunk::TIOCSERGETLSR)?&SerialJunk::TIOCSERGETLSR:0;
-    $dtrset = defined(&SerialJunk::TIOCSDTR) ? &SerialJunk::TIOCSDTR : 0;
-    $dtrclear=defined(&SerialJunk::TIOCCDTR) ? &SerialJunk::TIOCCDTR : 0;
-    $rtsout = pack('L', &SerialJunk::TIOCM_RTS);
-    $dtrout = pack('L', &SerialJunk::TIOCM_DTR);
-    $termioxflow = defined(&SerialJunk::CTSXON) ? 
-	(&SerialJunk::CTSXON | &SerialJunk::RTSXOFF) : 0;
-    $tcgetx = defined(&SerialJunk::TCGETX) ? &SerialJunk::TCGETX : 0;
-    $tcsetx = defined(&SerialJunk::TCGETX) ? &SerialJunk::TCGETX : 0;
-  };
-}
-else {
-    $bitset = 0;
-    $bitclear = 0;
-    $statget = 0;
-    $incount = 0;
-    $outcount = 0;
-    $txdone = 0;
-    $dtrset = 0;
-    $dtrclear = 0;
-    $rtsout = pack('L', 0);
-    $dtrout = pack('L', 0);
-    $termioxflow = 0;
-    $tcgetx = 0;
-    $tcsetx = 0;
-}
-
-    # non-POSIX constants commonly defined in termios.ph
-sub CRTSCTS {
-    return 0 unless (defined &SerialJunk::CRTSCTS);
-    return &SerialJunk::CRTSCTS;
-}
-
-sub OCRNL {
-    return 0 unless (defined &SerialJunk::OCRNL);
-    return &SerialJunk::OCRNL;
-}
-
-sub ONLCR {
-    return 0 unless (defined &SerialJunk::ONLCR);
-    return &SerialJunk::ONLCR;
-}
-
-sub ECHOKE {
-    return 0 unless (defined &SerialJunk::ECHOKE);
-    return &SerialJunk::ECHOKE;
-}
-
-sub ECHOCTL {
-    return 0 unless (defined &SerialJunk::ECHOCTL);
-    return &SerialJunk::ECHOCTL;
-}
-
-sub TIOCM_LE {
-    if (defined &SerialJunk::TIOCSER_TEMT) { return &SerialJunk::TIOCSER_TEMT; }
-    if (defined &SerialJunk::TIOCM_LE) { return &SerialJunk::TIOCM_LE; }
-    0;
-}
-
-## Next 4 use Win32 names for compatibility
-
-sub MS_RLSD_ON {
-    if (defined &SerialJunk::TIOCM_CAR) { return &SerialJunk::TIOCM_CAR; }
-    if (defined &SerialJunk::TIOCM_CD) { return &SerialJunk::TIOCM_CD; }
-    0;
-}
-
-sub MS_RING_ON {
-    if (defined &SerialJunk::TIOCM_RNG) { return &SerialJunk::TIOCM_RNG; }
-    if (defined &SerialJunk::TIOCM_RI) { return &SerialJunk::TIOCM_RI; }
-    0;
-}
-
-sub MS_CTS_ON {
-    return 0 unless (defined &SerialJunk::TIOCM_CTS);
-    return &SerialJunk::TIOCM_CTS;
-}
-
-sub MS_DSR_ON {
-    return 0 unless (defined &SerialJunk::TIOCM_DSR);
-    return &SerialJunk::TIOCM_DSR;
-}
-
 use Carp;
-use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.12';
+$VERSION = '0.20';
 
 require Exporter;
 
@@ -235,7 +51,89 @@ Exporter::export_ok_tags('STAT', 'PARAM');
 
 $EXPORT_TAGS{ALL} = \@EXPORT_OK;
 
+require XSLoader;
+XSLoader::load('Device::SerialPort', $VERSION);
+
 #### Package variable declarations ####
+
+use vars qw($bitset $bitclear $rtsout $dtrout $getstat $incount $outcount
+	    $txdone $dtrset $dtrclear $termioxflow $tcgetx $tcsetx
+            $ms_per_tick);
+my $ms_per_tick = 1000.0 / POSIX::sysconf(&POSIX::_SC_CLK_TCK);
+
+# Load all the system bits we need
+my $bits=Device::SerialPort::Bits::get_hash();
+
+$bitset = defined($bits->{'TIOCMBIS'}) ? $bits->{'TIOCMBIS'} : 0;
+$bitclear = defined($bits->{'TIOCMBIC'}) ? $bits->{'TIOCMBIC'} : 0;
+$getstat = defined($bits->{'TIOCMGET'}) ? $bits->{'TIOCMGET'} : 0;
+$incount = defined($bits->{'TIOCINQ'}) ? $bits->{'TIOCINQ'} : 0;
+$outcount = defined($bits->{'TIOCOUTQ'}) ? $bits->{'TIOCOUTQ'} : 0;
+$txdone = defined($bits->{'TIOCSERGETLSR'}) ? $bits->{'TIOCSERGETLSR'} : 0;
+$dtrset = defined($bits->{'TIOCSDTR'}) ? $bits->{'TIOCSDTR'} : 0;
+$dtrclear = defined($bits->{'TIOCCDTR'}) ? $bits->{'TIOCCDTR'} : 0;
+$rtsout = pack('L', defined($bits->{'TIOCM_RTS'}) ? $bits->{'TIOCM_RTS'} : 0);
+$dtrout = pack('L', defined($bits->{'TIOCM_DTR'}) ? $bits->{'TIOCM_DTR'} : 0);
+$termioxflow = defined($bits->{'CTSXON'}) ? ($bits->{'CTSXON'} | $bits->{'RTSXOFF'}) : 0;
+$tcgetx = defined($bits->{'TCGETX'}) ? $bits->{'TCGETX'} : 0;
+$tcsetx = defined($bits->{'TCSETX'}) ? $bits->{'TCSETX'} : 0;
+
+# non-POSIX constants commonly defined in termios.ph
+sub CRTSCTS {
+    return 0 unless (defined $bits->{'CRTSCTS'});
+    return $bits->{'CRTSCTS'};
+}
+
+sub OCRNL {
+    return 0 unless (defined $bits->{'OCRNL'});
+    return $bits->{'OCRNL'};
+}
+
+sub ONLCR {
+    return 0 unless (defined $bits->{'ONLCR'});
+    return $bits->{'ONLCR'};
+}
+
+sub ECHOKE {
+    return 0 unless (defined $bits->{'ECHOKE'});
+    return $bits->{'ECHOKE'};
+}
+
+sub ECHOCTL {
+    return 0 unless (defined $bits->{'ECHOCTL'});
+    return $bits->{'ECHOCTL'};
+}
+
+sub TIOCM_LE {
+    if (defined $bits->{'TIOCSER_TEMT'}) { return $bits->{'TIOCSER_TEMT'}; }
+    if (defined $bits->{'TIOCM_LE'}) { return $bits->{'TIOCM_LE'}; }
+    0;
+}
+
+## Next 4 use Win32 names for compatibility
+
+sub MS_RLSD_ON {
+    if (defined $bits->{'TIOCM_CAR'}) { return $bits->{'TIOCM_CAR'}; }
+    if (defined $bits->{'TIOCM_CD'}) { return $bits->{'TIOCM_CD'}; }
+    0;
+}
+
+sub MS_RING_ON {
+    if (defined $bits->{'TIOCM_RNG'}) { return $bits->{'TIOCM_RNG'}; }
+    if (defined $bits->{'TIOCM_RI'}) { return $bits->{'TIOCM_RI'}; }
+    0;
+}
+
+sub MS_CTS_ON {
+    return 0 unless (defined $bits->{'TIOCM_CTS'});
+    return $bits->{'TIOCM_CTS'};
+}
+
+sub MS_DSR_ON {
+    return 0 unless (defined $bits->{'TIOCM_DSR'});
+    return $bits->{'TIOCM_DSR'};
+}
+
 
 sub ST_BLOCK	{0}	# status offsets for caller
 sub ST_INPUT	{1}
@@ -336,7 +234,7 @@ my $zero=0;
 sub get_tick_count {
 	# clone of Win32::GetTickCount - perhaps same 49 day problem
     my ($real2, $user2, $system2, $cuser2, $csystem2) = POSIX::times();
-    $real2 *= 10.0;
+    $real2 *= $ms_per_tick;
     ## printf "real2 = %8.0f\n", $real2;
     return int $real2;
 }
@@ -535,7 +433,7 @@ sub new {
 
 sub write_settings {
     my $self = shift;
-    my $item;
+    my ($item, $result);
 
     # put current values into Termios structure
     $self->{TERMIOS}->setcflag($self->{"C_CFLAG"});
@@ -549,12 +447,13 @@ sub write_settings {
 	$self->{TERMIOS}->setcc($c_cc_fields{$item}, $self->{"C_$item"});
     }
 
-    $self->{TERMIOS}->setattr($self->{FD}, &POSIX::TCSANOW);
+    $result = $self->{TERMIOS}->setattr($self->{FD}, &POSIX::TCSANOW);
 
     if ($Babble) {
         print "writing settings to $self->{ALIAS}\n";
     }
-    1;
+   
+    return $result; 
 }
 
 sub save {
@@ -757,7 +656,7 @@ sub can_status {
 }
 
 sub can_write_done {
-    return 0 unless ($txdone && TIOCM_LE && $outcount);
+    return 0 unless ($txdone && defined($bits->{'TIOCM_LE'}) && $outcount);
     return 1;
 }
 
@@ -1855,7 +1754,7 @@ sub parity_enable {
 
 sub write_done {
     return unless (@_ == 2);
-    return unless ($txdone && TIOCM_LE && $outcount);
+    return unless ($txdone && defined($bits->{'TIOCM_LE'}) && $outcount);
     my $self = shift;
     my $wait = yes_true ( shift );
     $self->write_drain if ($wait);
@@ -1866,7 +1765,7 @@ sub write_done {
         $result = unpack('L', $mstat);
 	return (0, 0) if ($result);	# characters pending
 	ioctl($self->{HANDLE}, $txdone, $mstat) || return;
-	$result = (unpack('L', $mstat) & TIOCM_LE);
+	$result = (unpack('L', $mstat) & $bits->{'TIOCM_LE'});
 	last unless ($wait);
 	last if ($result);		# shift register empty
 	select (undef, undef, undef, 0.02);
@@ -1922,7 +1821,7 @@ sub dtr_active {
     return unless (@_ == 2);
     my $self = shift;
     return unless $self->can_ioctl();
-    my $on = shift;
+    my $on = yes_true( shift );
     my $rc;
 
     # if we have set DTR and clear DTR, we should use it (OpenBSD)
@@ -1946,7 +1845,7 @@ sub rts_active {
     return unless (@_ == 2);
     my $self = shift;
     return unless ($self->can_rts());
-    my $on = shift;
+    my $on = yes_true( shift );
     # returns ioctl result
     my $rc=ioctl($self->{HANDLE}, $on ? $bitset : $bitclear, $rtsout);
     warn "rts_active($on) ioctl: $!\n" if (!$rc);
@@ -2968,6 +2867,103 @@ constants in hardware device drivers....not where you want to look for bugs).
 With all the options, this module needs a good tutorial. It doesn't
 have one yet.
 
+=head1 PORTING
+
+For a serial port to work under Unix, you need the ability to do several
+types of operations.  With POSIX, these operations are implemented with
+a set of "tc*" functions.  However, not all Unix systems follow this
+correctly.  In those cases, the functions change, but the variables used
+as parameters generally turn out to be the same.
+
+=over 4
+
+=item Get/Set RTS
+
+This is only available through the bit-set(TIOCMBIS)/bit-clear(TIOCMBIC)
+ioctl function using the RTS value(TIOCM_RTS).
+
+ ioctl($handle,$on ? $TIOCMBIS : $TIOCMBIC, $TIOCM_RTS);
+
+=item Get/Set DTR
+
+This is available through the bit-set(TIOCMBIS)/bit-clear(TIOCMBIC)
+ioctl function using the DTR value(TIOCM_DTR)
+
+ ioctl($handle,$on ? $TIOCMBIS : $TIOCMBIC, $TIOCM_DTR);
+
+or available through the DTRSET/DTRCLEAR ioctl functions, if they exist.
+
+ ioctl($handle,$on ? $TIOCSDTR : $TIOCCDTR, 0);
+
+=item Get modem lines
+
+To read Clear To Send (CTS), Data Set Ready (DSR), Ring Indicator (RING), and
+Carrier Detect (CD/RLSD), the TIOCMGET ioctl function must be used.
+
+ ioctl($handle, $TIOCMGET, $status);
+
+To decode the individual modem lines, some bits have multiple possible
+constants:
+
+=over 4
+
+=item Clear To Send (CTS)
+
+TIOCM_CTS
+
+=item Data Set Ready (DSR)
+
+TIOCM_DSR
+
+=item Ring Indicator (RING)
+
+TIOCM_RNG
+TIOCM_RI
+
+=item Carrier Detect (CD/RLSD)
+
+TIOCM_CAR
+TIOCM_CD
+
+=back
+
+=item Get Buffer Status
+
+To get information about the state of the serial port input and output
+buffers, the TIOCINQ and TIOCOUTQ ioctl functions must be used.  I'm not
+totally sure what is returned by these functions across all Unix systems.
+Under Linux, it is the integer number of characters in the buffer.
+
+ ioctl($handle,$in ? $TIOCINQ : $TIOCOUTQ, $count);
+ $count = unpack('i',$count);
+
+=item Get Line Status
+
+To get information about the state of the serial transmission line
+(to see if a write has made its way totally out of the serial port
+buffer), the TIOCSERGETLSR ioctl function must be used.  Additionally,
+the "Get Buffer Status" methods must be functioning, as well as having
+the first bit of the result set (Linux is TIOCSER_TEMT, others unknown,
+but we've been using TIOCM_LE even though that should be returned from
+the TIOCMGET ioctl).
+
+ ioctl($handle,$TIOCSERGETLSR, $status);
+ $done = (unpack('i', $status) & $TIOCSER_TEMT);
+
+=item Set Flow Control
+
+Some Unix systems require special TCGETX/TCSETX ioctls functions and the
+CTSXON/RTSXOFF constants to turn on and off CTS/RTS "hard" flow control
+instead of just using the normal POSIX tcsetattr calls.
+
+ ioctl($handle, $TCGETX, $flags);
+ @bytes = unpack('SSSS',$flags);
+ $bytes[0] = $on ? ($CTSXON | $RTSXOFF) : 0;
+ $flags = pack('SSSS',@bytes);
+ ioctl($handle, $TCSETX, $flags);
+
+=back
+
 =head1 KNOWN LIMITATIONS
 
 The current version of the module has been tested with Perl 5.003 and
@@ -3000,15 +2996,10 @@ Write timeouts and B<read_interval> timeouts are not currently supported.
 
 See the limitations about lockfiles. Experiment if you like.
 
-The location of C<termios.ph> is different on other Operating Systems.
-Some may not have it at all or may use a different name. Please report
-locations you find which differ from this so I can add them to later
-versions.
-
 With all the I<currently unimplemented features>, we don't need any more.
 But there probably are some.
 
-__Please send comments and bug reports to wcbirthisel@alum.mit.edu.
+Please send comments and bug reports to kees@outflux.net.
 
 =head1 Win32::SerialPort & Win32API::CommPort
 
@@ -3084,14 +3075,14 @@ omissions should be considered bugs and reported to the maintainer.
 
 =head1 AUTHORS
 
-Based on Win32::SerialPort.pm, Version 0.8, by Bill Birthisel
+ Based on Win32::SerialPort.pm, Version 0.8, by Bill Birthisel
+ Ported to linux/POSIX by Joe Doss for MisterHouse
+ Ported to Solaris/POSIX by Kees Cook for Sendpage
+ Ported to BSD/POSIX by Kees Cook
+ Ported to Perl XS by Kees Cook
 
-Ported to linux/POSIX by Joe Doss for MisterHouse
-Ported to Solaris/POSIX by Kees Cook for Sendpage
-Ported to BSD/POSIX by Kees Cook for Sendpage
-
-Currently maintained by:
-Kees Cook, cook@cpoint.net, http://outflux.net/
+ Currently maintained by:
+ Kees Cook, kees@outflux.net, http://outflux.net/
 
 =head1 SEE ALSO
 
@@ -3099,11 +3090,12 @@ Win32API::CommPort
 
 Win32::SerialPort
 
-Perltoot.xxx - Tom (Christiansen)'s Object-Oriented Tutorial
+perltoot - Tom Christiansen's Object-Oriented Tutorial
 
 =head1 COPYRIGHT
 
-Copyright (C) 1999, Bill Birthisel. All rights reserved.
+ Copyright (C) 1999, Bill Birthisel. All rights reserved.
+ Copyright (C) 2000-2003, Kees Cook.  All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
