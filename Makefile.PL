@@ -3,17 +3,27 @@ use strict;
 use warnings;
 use ExtUtils::MakeMaker;
 
-# First, we need to figure out a default serial port to use for
-# testing.
-print "Trying to find a serial port for testing...\n";
 my @SERIALS;
+
+# Scan for argument we know about
+my @passargs;
 if (@ARGV) {
 	foreach my $arg (@ARGV) {
-		if ($arg =~ /^TESTPORT=(.+)$/) {
-			push(@SERIALS,$1);
+		my ($key,$value)=split /=/, $arg, 2;
+		if ($key eq "TESTPORT") {
+			push(@SERIALS,$value);
+		}
+		else {
+			push(@passargs,$arg);
 		}
 	}
 }
+@ARGV=@passargs;
+
+
+# First, we need to figure out a default serial port to use for
+# testing.
+print "Trying to find a serial port for testing...\n";
 unless (@SERIALS) {
 	@SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1" );
 	print "(use 'perl Makefile.PL TESTPORT=<DEVICE>' to override this search)\n";
@@ -102,7 +112,9 @@ print "into '$file'!\n";
 my %mm_args=(
     'NAME'          => 'Device::SerialPort',
     'VERSION_FROM'  => 'SerialPort.pm', # finds $VERSION
-    'PREREQ_PM'     => {}, # e.g., Module::Name => 1.1
+    'PREREQ_PM'     => {
+				'Test::More' => 0,
+			}, # e.g., Module::Name => 1.1
     'ABSTRACT_FROM' => 'SerialPort.pm', # retrieve abstract from module
     'AUTHOR'        => 'Kees Cook <kees@outflux.net>',
     'LIBS'          => [''], # e.g., '-lm'

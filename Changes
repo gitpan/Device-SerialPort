@@ -1,6 +1,23 @@
 Revision history for Perl extension Device::SerialPort.
 
-0.22 (CVS) (Kees)
+1.0.0 2004-02-23 (Kees)
+	- fixed logic in READ tie function from Jaakko Yli-Luukko	
+	- added RPM .spec packaging support
+	- adding debian packaging support
+	- updated version number to first stable release
+	- fixing up failure return codes in data,parity,flow functions
+	- cleaning up default settings for parmrk, istrip, etc
+	- split off stty_parmrk
+	- setting defaults of 9600, 8N1, no flow in "new"
+	- added MS_DTR_ON and MS_DSR_ON
+	- clearly documenting "carrier" bit
+	- added automatic system baud rate detection
+	- added modem line reporting to "modemtest"
+	- documented "modemtest"
+	- I think I finally found the parity problem that has been
+	  plauging this code since I took it over!
+
+0.22 2003-06-18 (Kees)
 	- added a notice about 4096 read limits on some machines
 	  noticed by Ed Morandi.
 	- built an rpm .spec file with the help of cpan2rpm.

@@ -429,7 +429,7 @@ $file = "/dev/badport";
 my $ob2;
 is_bad ($ob2 = AltPort->new ($file));		# 100
 is_bad (defined $ob2);				# 101
-is_zero ($ob2 = AltPort->new ($file, 1));	# 102
+is_bad ($ob2 = AltPort->new ($file, 1));	# 102
 is_bad ($ob2 = AltPort->new ($file, 0));	# 103
 
 if ($naptime) {

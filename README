@@ -1,5 +1,4 @@
 Device::SerialPort
-VERSION=0.22, 2003 Jun 12
 
 Hello Serial Port users:
 
@@ -36,6 +35,8 @@ with the Sendpage tool (http://sendpage.org/).
 Version 0.20 uses XS to figure out the serial/modem bits needed to do
 all the state fiddling.  Pay close attention to the "configure" output
 warnings to find out about possible broken things on your system.
+
+Version 1.0.0 changes the version number scheme to be like Perl itself.
 
 COMPATIBILITY NOTES:
 
@@ -80,6 +81,7 @@ FILES:
 
  README			- this file
  INSTALL                - bare minimum instructions for installing
+ TODO                   - list of other stuff in need of coding
  COPYING                - software license
  Changes		- for history lovers
  Makefile.PL		- the "starting point" for traditional reasons
@@ -89,7 +91,7 @@ FILES:
  SerialPort.pm		- the reason you're reading this
  SerialPort.xs		- the C code to get all the serial bits from .h files
  modemtest		- quick tool for checking on serial port
- show-tiocm.c           - simple C tool to report TIOCM* hacks
+ show-tiocm.c.test      - simple C tool to report TIOCM* hacks
  Device-SerialPort.spec - RPM .spec file for building RPMS
 
  t			- test directory
@@ -264,7 +266,6 @@ Thanks,
 -Kees <kees@outflux.net>
 
 Copyright (C) 1999, Bill Birthisel. All rights reserved.
-Copyright (C) 2001-2003 Kees Cook. All rights reserved.
+Copyright (C) 2001-2004 Kees Cook. All rights reserved.
 This module is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
-

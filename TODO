@@ -1,9 +1,14 @@
 
-- fix AIX hardware flow control
-- fix lockfile support
+High
 - spread POD docs out across the module
+- fix AIX hardware flow control (whats wrong with it?)
 
-- add a mechanism to set dtrrts etc in one swoop
+Medium
+- fix lockfile support (maybe using a generic File::Lock routine?)
+- convert to Test::More
 - create a method to call "new" without a device name (cleaner way to test)
+- split up tests so we can do non-device testing (as the default)
+- make error handling behavior an option (don't die on device failure)
 
-
+Low
+- add a mechanism to set any modem lines in one function call

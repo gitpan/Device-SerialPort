@@ -5,7 +5,8 @@ use strict;
 #########################
 
 use Test::More tests => 7;
-BEGIN { use_ok('Device::SerialPort',qw( :STAT 0.22 )) }; # test
+
+use_ok('Device::SerialPort'); # test
 
 #########################
 
@@ -16,13 +17,13 @@ BEGIN { use_ok('Device::SerialPort',qw( :STAT 0.22 )) }; # test
 can_ok('Device::SerialPort',qw(get_tick_count)); # test
 
 my $then;
-ok(($then = Device::SerialPort->get_tick_count) != undef,
+ok(defined($then = Device::SerialPort->get_tick_count),
 	"get_tick_count returns a number"); # test
 
 ok(sleep(2) <= 2, "sleep sleeps"); # test
 
 my $now;
-ok(($now = Device::SerialPort->get_tick_count) != undef,
+ok(defined($now = Device::SerialPort->get_tick_count),
 	"get_tick_count still returns a number"); # test
 
 ok( ($now-$then) >= 1000, "measured sleep as more than 1 second")

@@ -41,3 +41,11 @@ autotools/missing
 autotools/mkinstalldirs
 show-tiocm.c.test
 Device-SerialPort.spec
+META.yml                                 Module meta-data (added by MakeMaker)
+debian/prerm
+debian/changelog
+debian/control
+debian/copyright
+debian/postinst
+debian/postrm
+debian/rules

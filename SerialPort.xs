@@ -35,7 +35,7 @@
 	hv_store(hv, key, strlen(key), value, 0);	\
 }
 
-// Hide this junk in the "Bits" namespace
+/* Hide this junk in the "Bits" namespace */
 MODULE = Device::SerialPort		PACKAGE = Device::SerialPort::Bits
 
 SV *
@@ -46,7 +46,7 @@ PREINIT:
 	SV *	value;
 PROTOTYPE:
 CODE:
-	// initialize the hash
+	/* initialize the hash */
 	hv = newHV();
 #ifdef _SC_CLK_TCK
 	ADD_TO_HASH(_SC_CLK_TCK)
@@ -132,6 +132,99 @@ CODE:
 #ifdef TCSETX
 	ADD_TO_HASH(TCSETX)
 #endif
+
+	/* Baud rates */
+#ifdef B0
+        ADD_TO_HASH(B0)
+#endif
+#ifdef B50
+        ADD_TO_HASH(B50)
+#endif
+#ifdef B75
+        ADD_TO_HASH(B75)
+#endif
+#ifdef B110
+        ADD_TO_HASH(B110)
+#endif
+#ifdef B134
+        ADD_TO_HASH(B134)
+#endif
+#ifdef B150
+        ADD_TO_HASH(B150)
+#endif
+#ifdef B200
+        ADD_TO_HASH(B200)
+#endif
+#ifdef B300
+        ADD_TO_HASH(B300)
+#endif
+#ifdef B600
+        ADD_TO_HASH(B600)
+#endif
+#ifdef B1200
+        ADD_TO_HASH(B1200)
+#endif
+#ifdef B1800
+        ADD_TO_HASH(B1800)
+#endif
+#ifdef B2400
+        ADD_TO_HASH(B2400)
+#endif
+#ifdef B4800
+        ADD_TO_HASH(B4800)
+#endif
+#ifdef B9600
+        ADD_TO_HASH(B9600)
+#endif
+#ifdef B19200
+        ADD_TO_HASH(B19200)
+#endif
+#ifdef B38400
+        ADD_TO_HASH(B38400)
+#endif
+#ifdef B57600
+        ADD_TO_HASH(B57600)
+#endif
+#ifdef B115200
+        ADD_TO_HASH(B115200)
+#endif
+#ifdef B230400
+        ADD_TO_HASH(B230400)
+#endif
+#ifdef B460800
+        ADD_TO_HASH(B460800)
+#endif
+#ifdef B500000
+        ADD_TO_HASH(B500000)
+#endif
+#ifdef B576000
+        ADD_TO_HASH(B576000)
+#endif
+#ifdef B921600
+        ADD_TO_HASH(B921600)
+#endif
+#ifdef B1000000
+        ADD_TO_HASH(B1000000)
+#endif
+#ifdef B1152000
+        ADD_TO_HASH(B1152000)
+#endif
+#ifdef B2000000
+        ADD_TO_HASH(B2000000)
+#endif
+#ifdef B2500000
+        ADD_TO_HASH(B2500000)
+#endif
+#ifdef B3000000
+        ADD_TO_HASH(B3000000)
+#endif
+#ifdef B3500000
+        ADD_TO_HASH(B3500000)
+#endif
+#ifdef B4000000
+        ADD_TO_HASH(B4000000)
+#endif
+
 	RETVAL = newRV_noinc((SV*)hv);
 OUTPUT:
 	RETVAL
