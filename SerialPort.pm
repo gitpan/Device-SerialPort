@@ -2,9 +2,10 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm,v 1.25 2004/02/23 21:05:43 nemies Exp $
+# $Id: SerialPort.pm,v 1.27 2004/03/29 17:45:10 nemies Exp $
 #
-# Copyright (C) 2003 Kees Cook
+# Copyright (C) 1999, Bill Birthisel
+# Copyright (C) 2000-2004 Kees Cook
 # kees@outflux.net, http://outflux.net/
 # 
 # This program is free software; you can redistribute it and/or
@@ -36,7 +37,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 # M.mmmrrr Major minor rev
 # Odd mmm is a devel version
 # Even mmm is a stable version
-$VERSION = 1.000_000;
+$VERSION = 1.000_001;
 
 require Exporter;
 
@@ -676,7 +677,7 @@ sub can_ioctl {
         defined($bits->{'TIOCMBIC'}) &&         # Turn off
         defined($bits->{'TIOCM_RTS'}) &&        # RTS value
         ( ( defined($bits->{'TIOCSDTR'}) &&     # DTR ability/value
-            defined($bits-{'TIOCCDTR'}) ) ||
+            defined($bits->{'TIOCCDTR'}) ) ||
           defined($bits->{'TIOCM_DTR'})
         )
        ) {

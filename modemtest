@@ -4,7 +4,7 @@
 # your machine.  It will list all the possible values for each function
 # as it runs.  Edit this tool to test various settings.
 #
-# $Id: modemtest,v 1.9 2004/02/07 21:12:23 nemies Exp $
+# $Id: modemtest,v 1.10 2004/02/24 05:27:24 nemies Exp $
 #
 # Copyright (C) 2000-2003 Kees Cook
 # kees@outflux.net, http://outflux.net/
@@ -26,6 +26,7 @@
 
 use Device::SerialPort qw (:STAT);
 use strict;
+use warnings;
 
 =head1 NAME
 

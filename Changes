@@ -1,5 +1,9 @@
 Revision history for Perl extension Device::SerialPort.
 
+1.0.1 2004-03-29 (Kees)
+	- small typo in bits processing for can_ioctl (thanks to
+	  Rick Ballard and John Eng for finding this!)
+
 1.0.0 2004-02-23 (Kees)
 	- fixed logic in READ tie function from Jaakko Yli-Luukko	
 	- added RPM .spec packaging support
