@@ -61,3 +61,7 @@ Revision history for Perl extension Device::SerialPort.
 	- add saved utility parameters and methods (hostname, et.al)
 	- save lockfile data in configuration_file
 
+0.09 Thu Jan 25 09:59:24 CST 2001 (Kees)
+	- added support for other OSes
+	- corrected DTR activation code
+
