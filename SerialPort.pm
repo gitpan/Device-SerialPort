@@ -216,7 +216,7 @@ use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.11';
+$VERSION = '0.12';
 
 require Exporter;
 
@@ -427,7 +427,7 @@ sub new {
 				    &POSIX::O_NONBLOCK);
 
     unless (defined $self->{FD}) { $self->{FD} = -1; }
-    unless ($self->{FD} >= 1) {
+    unless ($self->{FD} >= 0) {
         unless ($quiet) {
             nocarp or carp "can't open device: $self->{NAME}\n"; 
         }
@@ -2068,9 +2068,11 @@ sub close {
 	write_settings($self);
 
         $ok = POSIX::close($self->{FD});
-	# also closes $self->{HANDLE}
+	# we need to explicitly close this handle
+	$self->{HANDLE}->close if ($self->{HANDLE}->opened);
 
 	$self->{FD} = undef;
+	$self->{HANDLE} = undef;
     }
     if ($self->{LOCK}) {
 	unless ( unlink $self->{LOCK} ) {

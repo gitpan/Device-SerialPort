@@ -79,4 +79,6 @@ Revision history for Perl extension Device::SerialPort.
 	- detecting vmin settings for broken Solaris tools.
 	- added "modemtest"
 
-
+0.12 2001-10-24 (Kees)
+	- found a place where HANDLE was staying open
+	- corrected FD-success test (0 *is* a valid fd number)
