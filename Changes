@@ -65,3 +65,10 @@ Revision history for Perl extension Device::SerialPort.
 	- added support for other OSes
 	- corrected DTR activation code
 
+0.10 Tue Feb 13 08:52:54 CST 2001 (Kees)
+	- fixed broken tests
+	- improved auto-detection of ioctl methods
+	- got Linux working 100% (even with tests)
+	- got Solaris working 100% (even with tests)
+
+

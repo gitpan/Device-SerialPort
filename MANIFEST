@@ -3,6 +3,7 @@ Device-SerialPort.html
 MANIFEST
 Makefile.PL
 README
+TODO
 SerialPort.pm
 eg/any_os.plx
 eg/demo1.plx

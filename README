@@ -43,11 +43,11 @@ This module does not require a compiler or use XS. Since everything is
 (convoluted but still pure) perl, you can fix flaws and change limits
 if required. But please file a bug report if you do. I have tested with
 Perl 5.005_02 on Redhat 5.2. Some testing has occurred on AIX and Solaris
-as well.  This is the first beta release.
+as well.
 
 Version 0.09 adds further compatibility for other OSes, including AIX,
 Solaris, and OpenBSD.  Kees Cook is now maintaining this code for use
-with the Sendpage tool (http://sendpage.cpoint.net/).
+with the Sendpage tool (http://sendpage.cpoint.net/).  
 
 COMPATIBILITY NOTES:
 
@@ -76,6 +76,13 @@ COMPATIBILITY NOTES:
 
 6. Version 0.07 changes parts of the configuration_file. You will need
    to save a new one - files from previous versions will not work.
+
+7. OpenBSD does NOT support getting modem lines (!?), so that test will
+   fail, and no carrier detection will be possible.  This is being
+   worked on.
+
+8. Right now, AIX will also fail some of the tests, including setting
+   hardware flow control.  I'm working on fixing this.
 
 See the NOTES and KNOWN LIMITATIONS in the SerialPort documentation. The
 ".pod" is embedded in the ".pm". The comments on "-w" and "use strict"

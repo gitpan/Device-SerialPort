@@ -11,7 +11,9 @@
 
 package SerialJunk;
 use POSIX qw(uname);
-$DEBUG=0; # turn this on to debug the termios.ph hunting...
+
+$VERBOSE=0; # turn on for verbose ph hunting...
+$DEBUG=0; # turn this on to debug the *.ph hunting...
 
 # Auto-ioctl settings are now hunted down and verified.
 #  - Kees Cook, Sep 2000
@@ -26,23 +28,78 @@ if ($sysname eq "SunOS" && $machine =~ /^sun/) {
 }
 
 # Need to determine location (Linux, Solaris, AIX, BSD known & working)
-@LOCATIONS=('sys/ttycom.ph', 'termios.ph','sys/termios.ph','asm/termios.ph');
+@LOCATIONS=(	
+                'termios.ph',     # Linux
+                'asm/termios.ph', # Linux
+		'sys/termiox.ph', # AIX
+                'sys/termios.ph', # AIX, OpenBSD
+                'sys/ttycom.ph'   # OpenBSD
+);
 foreach $loc (@LOCATIONS) {
-   warn "trying '$loc'...\n" if ($DEBUG);
-   eval { require "$loc"; };
+   print "trying '$loc'... " if ($VERBOSE);
+   eval {
+	# silence .ph warnings
+	local $SIG{'__WARN__'}=sub { };
+
+	require "$loc";
+   };
    if ($@) {
-      warn "Device::Serial error: $@\n" if ($DEBUG);
+      print "nope\n" if ($VERBOSE);
+      print "\tDevice::Serial error: $@\n" if ($DEBUG);
+      next;
+   }
+
+   $benefit=0;
+
+   # do we have everything we need yet?
+   if (!defined($got{'hardflow'}) &&
+	(defined(&SerialJunk::CRTSCTS) || defined(&SerialJunk::CTSXON))) {
+        $got{'hardflow'}=1;
+	if (defined(&SerialJunk::CRTSCTS)) {
+	        print "(CRTSCTS) " if ($VERBOSE);
+	} else {
+        	print "(CTSXON) " if ($VERBOSE);
+	}
+        $benefit=1;
+   }
+   if (!defined($got{'TIOCMBIS'}) && defined(&SerialJunk::TIOCMBIS)) {
+        $got{'TIOCMBIS'}=1;
+        print "(TIOCMBIS) " if ($VERBOSE);
+        $benefit=1;
+   }
+   if (!defined($got{'TIOCMBIC'}) && defined(&SerialJunk::TIOCMBIC)) {
+        $got{'TIOCMBIC'}=1;
+        print "(TIOCMBIC) " if ($VERBOSE);
+        $benefit=1;
+   }
+   if (!defined($got{'TIOCMGET'}) && defined(&SerialJunk::TIOCMGET)) {
+        $got{'TIOCMGET'}=1;
+        print "(TIOCMGET) " if ($VERBOSE);
+        $benefit=1;
+   }
+   if (!defined($got{'dtr'}) &&
+        (defined(&SerialJunk::TIOCSDTR) || defined(&SerialJunk::TIOCM_DTR))) {
+        $got{'dtr'}=1;
+        if (defined(&SerialJunk::TIOCSDTR)) {
+                print "(TIOCSDTR) " if ($VERBOSE);
+        } else {
+                print "(TIOCM_DTR) " if ($VERBOSE);
+        }
+        $benefit=1;
+   }
+   if ($benefit == 1) {
+        push(@using, $loc);
+	print "useful\n" if ($VERBOSE);
    }
    else {
-      # pick routines to test...
-      if (defined(&SerialJunk::TIOCMBIS) &&
-	  defined(&SerialJunk::TIOCMBIC) &&
-	  defined(&SerialJunk::TIOCMGET) &&
-	  (defined(&SerialJunk::TIOCSDTR) || defined(&SerialJunk::TIOCM_DTR))) {
-		$ioctl_ok = 1;
-		warn "Using '$loc'\n" if ($DEBUG);
-		last;
-      }
+        print "not useful\n" if ($VERBOSE);
+   }
+   if ($got{'dtr'} && $got{'hardflow'} && $got{'TIOCMBIS'} &&
+        $got{'TIOCMBIC'} && $got{'TIOCMGET'}) {
+                $ioctl_ok = 1;
+                print "\nNeeded '".
+                        join("', '",@using)."'\n" if ($VERBOSE);
+                last;
    }
 }
 if ($ioctl_ok == 0) {
@@ -55,8 +112,12 @@ use POSIX qw(:termios_h);
 use IO::Handle;
 
 use vars qw($bitset $bitclear $rtsout $dtrout $getstat $incount $outcount
-	    $txdone $dtrset $dtrclear);
+	    $txdone $dtrset $dtrclear $termioxflow $tcgetx $tcsetx);
 if ($SerialJunk::ioctl_ok) {
+  eval {
+    # silence .ph warnings
+    local $SIG{'__WARN__'}=sub { };
+
     $bitset = &SerialJunk::TIOCMBIS;
     $bitclear = &SerialJunk::TIOCMBIC;
     $getstat = &SerialJunk::TIOCMGET;
@@ -67,6 +128,11 @@ if ($SerialJunk::ioctl_ok) {
     $dtrclear=defined(&SerialJunk::TIOCCDTR) ? &SerialJunk::TIOCCDTR : 0;
     $rtsout = pack('L', &SerialJunk::TIOCM_RTS);
     $dtrout = pack('L', &SerialJunk::TIOCM_DTR);
+    $termioxflow = defined(&SerialJunk::CTSXON) ? 
+	(&SerialJunk::CTSXON | &SerialJunk::RTSXOFF) : 0;
+    $tcgetx = defined(&SerialJunk::TCGETX) ? &SerialJunk::TCGETX : 0;
+    $tcsetx = defined(&SerialJunk::TCGETX) ? &SerialJunk::TCGETX : 0;
+  };
 }
 else {
     $bitset = 0;
@@ -79,9 +145,17 @@ else {
     $dtrclear = 0;
     $rtsout = pack('L', 0);
     $dtrout = pack('L', 0);
+    $termioxflow = 0;
+    $tcgetx = 0;
+    $tcsetx = 0;
 }
 
     # non-POSIX constants commonly defined in termios.ph
+sub CRTSCTS {
+    return 0 unless (defined &SerialJunk::CRTSCTS);
+    return &SerialJunk::CRTSCTS;
+}
+
 sub OCRNL {
     return 0 unless (defined &SerialJunk::OCRNL);
     return &SerialJunk::OCRNL;
@@ -136,7 +210,7 @@ use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.09';
+$VERSION = '0.10';
 
 require Exporter;
 
@@ -178,9 +252,6 @@ my %validate =	(
 		CFG_2		=> "cfg_param_2",
 		CFG_3		=> "cfg_param_3",
 		);
-
-# Linux-specific constant for Hardware Handshaking
-sub CRTSCTS { 020000000000 }
 
 # Linux-specific Baud-Rates
 sub B57600  { 0010001 }
@@ -383,6 +454,9 @@ sub new {
     $self->{"_LFLAG"} = $self->{TERMIOS}->getlflag();
     $self->{"_OFLAG"} = $self->{TERMIOS}->getoflag();
     $self->{"_OSPEED"} = $self->{TERMIOS}->getospeed();
+
+    # build termiox flag anyway
+    $self->{'TERMIOX'} = 0;
 
     foreach $item (keys %c_cc_fields) {
 	$self->{"_$item"} = $self->{TERMIOS}->getcc($c_cc_fields{$item});
@@ -646,8 +720,8 @@ sub can_rlsd			{ return 0; } # currently
 sub can_16bitmode		{ return 0; } # Win32-specific
 sub is_rs232			{ return 1; }
 sub is_modem			{ return 0; } # Win32-specific
-sub can_rtscts			{ return 1; }
-sub can_xonxoff			{ return 1; }
+sub can_rtscts			{ return 1; } # this is a flow option
+sub can_xonxoff			{ return 1; } # this is a flow option
 sub can_xon_char		{ return 1; } # use stty
 sub can_spec_char		{ return 0; } # use stty
 sub can_interval_timeout	{ return 0; } # currently
@@ -671,6 +745,35 @@ sub can_write_done {
     return 0 unless ($txdone && TIOCM_LE && $outcount);
     return 1;
 }
+
+# can we control the rts line?
+sub can_rts {
+    return 0 unless($bitset && $bitclear && $rtsout && !($dtrset && $dtrclear));
+    return 1;
+}
+
+sub termiox {
+    my $self = shift;
+    return unless ($termioxflow);
+    my $on = shift;
+    my $rc;
+
+    $self->{'TERMIOX'}=$on ? $termioxflow : 0;
+
+    my $flags=pack('SSSS',0,0,0,0);
+    if (!($rc=ioctl($self->{HANDLE}, $tcgetx, $flags))) {
+	warn "TCGETX ioctl: $!\n";
+    }
+
+    my @vals=unpack('SSSS',$flags);
+    $vals[0]= $on ? $termioxflow : 0;
+    $flags=pack('SSSS',@vals);
+
+    if (!($rc=ioctl($self->{HANDLE}, $tcsetx, $flags))) {
+	warn "TCSETX($on) ioctl: $!\n";
+    }
+    return $rc;
+}
   
 sub handshake {
     my $self = shift;
@@ -678,14 +781,17 @@ sub handshake {
     if (@_) {
 	if ( $_[0] eq "none" ) {
 	    $self->{"C_IFLAG"} &= ~(IXON | IXOFF);
+	    $self->termiox(0) if ($termioxflow);
 	    $self->{"C_CFLAG"} &= ~CRTSCTS;
 	}
 	elsif ( $_[0] eq "xoff" ) {
 	    $self->{"C_IFLAG"} |= (IXON | IXOFF);
+	    $self->termiox(0) if ($termioxflow);
 	    $self->{"C_CFLAG"} &= ~CRTSCTS;
 	}
 	elsif ( $_[0] eq "rts" ) {
 	    $self->{"C_IFLAG"} &= ~(IXON | IXOFF);
+	    $self->termiox(1) if ($termioxflow);
 	    $self->{"C_CFLAG"} |= CRTSCTS;
 	}
         else {
@@ -699,7 +805,11 @@ sub handshake {
     if (wantarray) { return ("none", "xoff", "rts"); }
     my $mask = (IXON|IXOFF);
     return "xoff" if ($mask == ($self->{"C_IFLAG"} & $mask));
-    return "rts" if ($self->{"C_CFLAG"} & CRTSCTS);
+    if ($termioxflow) {
+	return "rts" if ($self->{'TERMIOX'} & $termioxflow);
+    } else {
+    	return "rts" if ($self->{"C_CFLAG"} & CRTSCTS);
+    }
     return "none";
 }
 
@@ -1737,11 +1847,14 @@ sub write_done {
 }
 
 sub modemlines {
-    return unless (@_ == 1);
-    return unless ($getstat);
+    return undef unless (@_ == 1);
+    return undef unless ($getstat);
     my $self = shift;
-    my $mstat = " ";
-    ioctl($self->{HANDLE}, $getstat, $mstat) || return;
+    my $mstat = pack('L',0);
+    if (!ioctl($self->{HANDLE}, $getstat, $mstat)) {
+	warn "modemlines ioctl failed: $!\n";
+	return undef;
+    }
     my $result = unpack('L', $mstat);
     if ($Babble) {
         printf "result = %x\n", $result;
@@ -1799,16 +1912,13 @@ sub dtr_active {
 
 sub rts_active {
     return unless (@_ == 2);
-    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
-    my $onoff = shift;
+    return unless ($self->can_rts());
+    my $on = shift;
     # returns ioctl result
-    if ($onoff) {
-        ioctl($self->{HANDLE}, $bitset, $rtsout);
-    }
-    else {
-        ioctl($self->{HANDLE}, $bitclear, $rtsout);
-    }
+    my $rc=ioctl($self->{HANDLE}, $on ? $bitset : $bitclear, $rtsout);
+    warn "rts_active($on) ioctl: $!\n" if (!$rc);
+    return $rc; 
 }
 
 sub pulse_break_on {
@@ -1824,8 +1934,8 @@ sub pulse_break_on {
 
 sub pulse_rts_on {
     return unless (@_ == 2);
-    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
+    return unless ($self->can_rts());
     my $delay = (shift)/1000;
     $self->rts_active(1) or warn "could not pulse rts on\n";
 ##    print "rts on\n"; ## DEBUG
@@ -1852,8 +1962,8 @@ sub pulse_dtr_on {
 
 sub pulse_rts_off {
     return unless (@_ == 2);
-    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
+    return unless ($self->can_rts());
     my $delay = (shift)/1000;
     $self->rts_active(0) or warn "could not pulse rts off\n";
 ##    print "rts off\n"; ## DEBUG

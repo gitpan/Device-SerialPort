@@ -10,7 +10,7 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 BEGIN { $| = 1; print "1..159\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use AltPort qw( :PARAM 0.07 );		# check inheritance & export
+use AltPort qw( :PARAM 0.10 );		# check inheritance & export
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
@@ -151,7 +151,7 @@ unless (is_ok ($ob = AltPort->new ($file))) {
 is_ok($ob->can_baud);				# 8
 is_ok($ob->can_databits);			# 9
 is_ok($ob->can_stopbits);			# 10
-is_zero($ob->can_dtrdsr);			# 11
+is_ok($ob->can_dtrdsr);				# 11
 is_ok($ob->can_handshake);			# 12
 is_ok($ob->can_parity_check);			# 13
 is_ok($ob->can_parity_config);			# 14
@@ -369,7 +369,11 @@ $in2 = $ob->input;
 $tock=$ob->get_tick_count;
 
 is_ok (20 == $ob->read_char_time);		# 91
-is_ok ($in2 eq "");				# 92
+unless (is_ok ($in2 eq "")) {			# 92
+    die "\n92: Looks like you have a modem on the serial port!\n".
+        "Please turn it off, or remove it and restart the tests.\n";
+    # many tests following here will fail if there is modem attached
+}
 
 $err=$tock - $tick;
 is_bad ($err > 50);				# 93
@@ -430,23 +434,28 @@ if ($ob->can_ioctl) {
     is_bad (($err < 370) or ($err > 485));	# 110
     print "<400> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 111
-    $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_on(150));		# 112
-    $tock=$ob->get_tick_count;
-    $err=$tock - $tick;
-    is_bad (($err < 275) or ($err > 365));	# 113
-    print "<300> elapsed time=$err\n";
+    if ($ob->can_rts()) {
+        is_ok ($ob->rts_active(0));		# 111
+        $tick=$ob->get_tick_count;
+        is_ok ($ob->pulse_rts_on(150));		# 112
+        $tock=$ob->get_tick_count;
+        $err=$tock - $tick;
+        is_bad (($err < 275) or ($err > 365));	# 113
+        print "<300> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(1));			# 114
-    $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_on(50));		# 115
-    $tock=$ob->get_tick_count;
-    $err=$tock - $tick;
-    is_bad (($err < 80) or ($err > 145));	# 116
-    print "<100> elapsed time=$err\n";
+        is_ok ($ob->rts_active(1));		# 114
+        $tick=$ob->get_tick_count;
+        is_ok ($ob->pulse_rts_on(50));		# 115
+        $tock=$ob->get_tick_count;
+        $err=$tock - $tick;
+        is_bad (($err < 80) or ($err > 145));	# 116
+        print "<100> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 117
+        is_ok ($ob->rts_active(0));		# 117
+    }
+    else {
+	while ($tc < 117.1) { is_ok (1); }	# 111-117
+    }
     is_ok ($ob->dtr_active(0));			# 118
 }
 else {

@@ -8,23 +8,18 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..173\n"; }
+BEGIN { $| = 1; print "1..174\n"; }
 END {print "not ok 1\n" unless $loaded;}
 
 use POSIX qw(uname);
-# these things break under POSIX in Solaris 2.6
+# can't drain ports without modems on them under POSIX in Solaris 2.6
 my ($sysname, $nodename, $release, $version, $machine) = POSIX::uname();
-my $SKIPBREAK=0;
-my $SKIPCLOSE=0;
+my $SKIPDRAIN=0;
 if ($sysname eq "SunOS" && $machine =~ /^sun/) {
-	$SKIPBREAK=1;
-	$SKIPCLOSE=1;
+	$SKIPDRAIN=1;
 }
 
-# if your testing stalls, set this to "1" and re-run the test
-my $SKIPSTALLS=0;
-
-use Device::SerialPort qw( :STAT 0.07 );
+use Device::SerialPort qw( :STAT 0.10 );
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
@@ -150,8 +145,7 @@ is_ok(test_bin_list(@opts));
 # 7: Constructor
 
 unless (is_ok ($ob = Device::SerialPort->new ($file))) {
-    printf "could not open port $file\n";
-    exit 1;
+    die "\n7: could not open port '$file'.  Are permissions correct?\n";
     # next test would die at runtime without $ob
 }
 
@@ -162,7 +156,7 @@ unless (is_ok ($ob = Device::SerialPort->new ($file))) {
 is_ok($ob->can_baud);				# 8
 is_ok($ob->can_databits);			# 9
 is_ok($ob->can_stopbits);			# 10
-is_zero($ob->can_dtrdsr);			# 11
+is_ok($ob->can_dtrdsr);				# 11
 is_ok($ob->can_handshake);			# 12
 is_ok($ob->can_parity_check);			# 13
 is_ok($ob->can_parity_config);			# 14
@@ -302,15 +296,17 @@ my $line = "\r\n$e\r\n$e\r\n$e\r\n";	# about 195 MS at 9600 baud
 
 $tick=$ob->get_tick_count;
 $pass=$ob->write($line);
-if (!$SKIPSTALLS) {
-	is_ok(1 == $ob->write_drain);			# 69
+if ($SKIPDRAIN) {
+	is_zero(0);				# 69
+	select(undef,undef,undef,0.195);
+} else {
+	is_ok(1 == $ob->write_drain);		# 69
 }
-else { is_ok(0); }
 $tock=$ob->get_tick_count;
 
 is_ok($pass == 188);				# 70
 $err=$tock - $tick;
-is_bad (($err < 160) or ($err > 245));		# 71
+is_bad (($err < 100) or ($err > 300));		# 71
 print "<195> elapsed time=$err\n";
 
 is_ok(scalar $ob->purge_tx);			# 72
@@ -382,8 +378,7 @@ is_zero($fault);				# 92
 
     # constructor = TIEHANDLE method		# 93
 unless (is_ok ($ob = tie(*PORT,'Device::SerialPort', $cfgfile))) {
-    printf "could not reopen port from $cfgfile\n";
-    exit 1;
+    die "\n93: could not reopen port from $cfgfile\n";
     # next test would die at runtime without $ob
 }
 
@@ -427,8 +422,13 @@ if ($naptime) {
     sleep $naptime;
 }
 
-is_zero ($in);					# 102
+unless (is_zero ($in)) {			# 102
+    die "\n102: Looks like you have a modem on the serial port!\n".
+        "Please turn it off, or remove it and restart the tests.\n";
+    # many tests following here will fail if there is modem attached
+}
 is_ok ($in2 eq "");				# 103
+
 
 $err=$tock - $tick;
 is_bad (($err < 475) or ($err > 585));		# 104
@@ -488,23 +488,30 @@ if ($ob->can_ioctl) {
     is_bad (($err < 370) or ($err > 485));	# 121
     print "<400> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 122
-    $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_on(150));		# 123
-    $tock=$ob->get_tick_count;
-    $err=$tock - $tick;
-    is_bad (($err < 275) or ($err > 365));	# 124
-    print "<300> elapsed time=$err\n";
+    if ($ob->can_rts()) {
+	is_ok ($ob->rts_active(0));		# 122
+    	$tick=$ob->get_tick_count;
+	is_ok ($ob->pulse_rts_on(150));		# 123
+	$tock=$ob->get_tick_count;
+	$err=$tock - $tick;
+	is_bad (($err < 275) or ($err > 365));	# 124
+	print "<300> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(1));			# 125
-    $tick=$ob->get_tick_count;
-    is_ok ($ob->pulse_rts_off(50));		# 126
-    $tock=$ob->get_tick_count;
-    $err=$tock - $tick;
-    is_bad (($err < 80) or ($err > 145));	# 127
-    print "<100> elapsed time=$err\n";
+	is_ok ($ob->rts_active(1));		# 125
+	$tick=$ob->get_tick_count;
+	is_ok ($ob->pulse_rts_off(50));		# 126
+	$tock=$ob->get_tick_count;
+	$err=$tock - $tick;
+	is_bad (($err < 80) or ($err > 145));	# 127
+	print "<100> elapsed time=$err\n";
+
+	is_ok ($ob->rts_active(0));		# 128
+    }
+    else {
+	# skip RTS setting tests
+    	while ($tc < 128.1) { is_ok (1); }	# 122-128
+    }
     
-    is_ok ($ob->rts_active(0));			# 128
     is_ok ($ob->dtr_active(0));			# 129
     is_ok("rts" eq $ob->handshake("rts"));	# 130
 
@@ -517,6 +524,7 @@ if ($ob->can_ioctl) {
     }
     is_zero($out);				# 131
     is_ok(188 == $ob->write($line));		# 132
+    print "<0 or 1> can_status=".$ob->can_status()."\n";
     if ($ob->can_status()) {
     	($blk, $in, $out, $err) = $ob->status;
     }
@@ -524,6 +532,7 @@ if ($ob->can_ioctl) {
 	$out=188;
 	$in=0;
 	$err=0;
+	$blk=0;
     }
     is_zero($blk);				# 133
 
@@ -557,6 +566,7 @@ if ($ob->can_ioctl) {
     }
     else {
 	$out=1;
+	select(undef,undef,undef,0.200);
     }
     $tock=$ob->get_tick_count;
 
@@ -564,14 +574,20 @@ if ($ob->can_ioctl) {
     $err=$tock - $tick;
     is_bad (($err < 170) or ($err > 255));	# 141
     print "<200> elapsed time=$err\n";
-    ($blk, $in, $out, $err) = $ob->status;
+    if ($ob->can_status()) {
+    	($blk, $in, $out, $err) = $ob->status;
+    }
+    else {
+	$out=0;
+    }
     is_zero($out);				# 142
     is_ok(MS_CTS_ON);				# 143
     is_ok(MS_DSR_ON);				# 144
     is_ok(MS_RING_ON);				# 145
     is_ok(MS_RLSD_ON);				# 146
     $blk = MS_CTS_ON | MS_DSR_ON | MS_RING_ON | MS_RLSD_ON;
-    is_zero($blk & $ob->modemlines);			# 147
+    is_ok(defined($ob->modemlines));		# 147
+    is_zero($blk & $ob->modemlines);		# 148
 }
 else {
     print "bypassing ioctl tests\n";
@@ -583,21 +599,25 @@ else {
     }
 
 	# test number must change to match preceeding loop
-    while ($tc < 147.1) { is_ok (1); }		# 134-147
+    while ($tc < 148.1) { is_ok (1); }		# 134-148
 }
 
-is_zero(ST_BLOCK);				# 148
-is_ok(1 == ST_INPUT);				# 149
-is_ok(2 == ST_OUTPUT);				# 150
-is_ok(3 == ST_ERROR);				# 151
+is_zero(ST_BLOCK);				# 149
+is_ok(1 == ST_INPUT);				# 150
+is_ok(2 == ST_OUTPUT);				# 151
+is_ok(3 == ST_ERROR);				# 152
 
 $tick=$ob->get_tick_count;
-if (!$SKIPBREAK) {
-	is_ok ($ob->pulse_break_on(250));		# 152
-} else { is_ok(0); }
+# on Sun, break waits to be flushed, but we're on an empty serial port...
+if ($SKIPDRAIN) {
+	is_zero(0);				# 153
+	select(undef,undef,undef,0.250);
+} else {
+	is_ok ($ob->pulse_break_on(250));	# 153
+}
 $tock=$ob->get_tick_count;
 $err=$tock - $tick;
-is_bad (($err < 235) or ($err > 900));		# 153
+is_bad (($err < 235) or ($err > 900));		# 154
 print "<500> elapsed time=$err\n";
 
 if ($naptime) {
@@ -606,67 +626,69 @@ if ($naptime) {
 }
 
     # destructor = CLOSE method
-if (!$SKIPCLOSE) {
+if ($SKIPDRAIN) {
+	is_zero(0);				# 155
+} else {
 	if ( $] < 5.005 ) {
-	    is_ok($ob->close);				# 154
+	    is_ok($ob->close);			# 155
 	}
 	else {
-	    is_ok(close PORT);				# 154
+	    is_ok(close PORT);			# 155
 	}
-} else { is_ok(0); }
+}
 
     # destructor = DESTROY method
 undef $ob;					# Don't forget this one!!
 untie *PORT;
 
-#### 155 - 162: Lock File Tests
+#### 156 - 163: Lock File Tests
 
 unlink $tstlock;
-is_bad (-e $tstlock);				# 155
+is_bad (-e $tstlock);				# 156
 
-is_ok ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 156
-is_ok (-e $tstlock);				# 157
-is_ok (-s $tstlock);				# 158
+is_ok ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 157
+is_ok (-e $tstlock);				# 158
+is_ok (-s $tstlock);				# 159
 
-is_ok ($ob->restart($cfgfile));			# 159
+is_ok ($ob->restart($cfgfile));			# 160
 sleep 1;
 my $cfg2 = "tmp.$cfgfile";
-is_ok(scalar $ob->save($cfg2));			# 160
-is_ok($ob->close);				# 161
+is_ok(scalar $ob->save($cfg2));			# 161
+is_ok($ob->close);				# 162
 sleep 1;
-is_bad (-e $tstlock);				# 162
+is_bad (-e $tstlock);				# 163
 
-#### 163 - 166: Lock from Configuration File with DESTROY
+#### 164 - 167: Lock from Configuration File with DESTROY
 
-is_ok ($ob = Device::SerialPort->start ($cfg2));	# 163
-is_ok (-e $tstlock);				# 164
-is_ok (-s $tstlock);				# 165
+is_ok ($ob = Device::SerialPort->start ($cfg2));	# 164
+is_ok (-e $tstlock);				# 165
+is_ok (-s $tstlock);				# 166
 undef $ob;
 
 sleep 1;
-is_bad (-e $tstlock);				# 166
+is_bad (-e $tstlock);				# 167
 
-## 167 - 169: Repeat with Lock SET
+## 168 - 170: Repeat with Lock SET
 
-is_ok(open LF, ">$tstlock");			# 167
+is_ok(open LF, ">$tstlock");			# 168
 print LF "$$\n";
 close LF;
 
-is_zero ($ob = Device::SerialPort->start ($cfg2));		# 168
-is_zero ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 169
+is_zero ($ob = Device::SerialPort->start ($cfg2));		# 169
+is_zero ($ob = Device::SerialPort->new ($file, 1, $tstlock));	# 170
 unlink $tstlock;
 
-## 170 - 173: Check File Headers with Lock
+## 171 - 174: Check File Headers with Lock
 
-is_ok(open CF, "$cfg2");			# 170
+is_ok(open CF, "$cfg2");			# 171
 ($signature, $name, $lockfile, @values) = <CF>;
 close CF;
 
-is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 171
+is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 172
 
 chomp $name;
-is_ok($name eq $file);				# 172
+is_ok($name eq $file);				# 173
 
 chomp $lockfile;
-is_ok($lockfile eq $tstlock);			# 173
+is_ok($lockfile eq $tstlock);			# 174
 unlink $cfg2;

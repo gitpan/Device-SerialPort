@@ -10,7 +10,7 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 BEGIN { $| = 1; print "1..46\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Device::SerialPort 0.07;
+use Device::SerialPort 0.10;
 require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
