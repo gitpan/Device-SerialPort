@@ -1,0 +1,39 @@
+#!/usr/bin/perl -w
+
+use lib './lib','../lib'; # can run from here or distribution base
+
+use strict;
+use Device::SerialPort 0.02;
+
+my $ob = Device::SerialPort->new ('/dev/modem') || die;
+
+my $baud = $ob->baudrate;
+my $parity = $ob->parity;
+my $data = $ob->databits;
+my $stop = $ob->stopbits;
+my $hshake = $ob->handshake;
+
+if ($baud) {
+    $ob->baudrate($baud)	|| die "fail setting baud";
+}
+else {
+    $baud = 9600;
+    defined $ob->baudrate($baud)	|| die "fail setting baud after 0";
+}
+
+$ob->parity($parity)	|| die "fail setting parity";
+$ob->databits($data)	|| die "fail setting databits";
+$ob->stopbits($stop)	|| die "fail setting stopbits";
+$ob->handshake($hshake)	|| die "fail setting handshake";
+
+$ob->write_settings || die "no settings";
+
+$baud = $ob->baudrate;
+$parity = $ob->parity;
+$data = $ob->databits;
+$stop = $ob->stopbits;
+$hshake = $ob->handshake;
+
+print "B = $baud, D = $data, S = $stop, P = $parity, H = $hshake\n";
+
+undef $ob;

@@ -1,0 +1,18 @@
+#!/usr/bin/perl -w
+
+use lib './lib','../lib'; # can run from here or distribution base
+
+use strict;
+use Device::SerialPort 0.02;
+
+my $ob = Device::SerialPort->new ('/dev/modem') || die;
+
+my $baud = $ob->baudrate;
+my $parity = $ob->parity;
+my $data = $ob->databits;
+my $stop = $ob->stopbits;
+my $hshake = $ob->handshake;
+
+print "B = $baud, D = $data, S = $stop, P = $parity, H = $hshake\n";
+
+undef $ob;

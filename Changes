@@ -1,0 +1,32 @@
+This is the Changes file for SerialPort_Linux.pm
+
+0.01	- This is a POSIX version of the Win32::Serialport module
+	  ported by Joe Doss for MisterHouse from Version 0.08.
+
+0.02	- Complete rewrite of the pod documentation.
+	- module now maintained by Bill Birthisel.
+	- Add PARAM: tags to %EXPORT_TAGS.
+	- Rename "tact" to "nocarp".
+	- Allow "parity_enable" and "set_test_mode_active" to accept FALSE.
+	- Add "defined" tests for POSIX tests which return "undef" on fail.
+	- Add the "can_xxx" methods with suitable return values.
+	- Initialize "user_msg", "error_msg", and "debug" to FALSE.
+	- Add "write_drain", "debug", and "reset_error" methods.
+	- Revise "baudrate", "parity", "databits", "stopbits", and "handshake"
+          to return current values in scalar context and permitted choices
+	  in list context. All values in same format as setting arguments.
+
+0.03	- Test version for ioctl support.
+---------------------------------------------------------------
+Revision history for Perl extension Device::SerialPort.
+
+0.04  Wed Jul 21 23:53:38 1999
+	- original version; created by h2xs 1.18
+	- MakeMaker templates merged with pre-existing code
+	- Add RTS, BREAK, DTR control
+	- Add GetTickCount method (clone of Win32::GetTickCount)
+	- Add read_const_time and read_char_time
+	- Add SHORTsize, LONGsize, test3.t and AltPort.pm for testing
+	- Add partial tied FileHandle support
+	- Documentation improvements
+	- Ported some of the Win32::SerialPort examples and demos
