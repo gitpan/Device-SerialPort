@@ -417,7 +417,8 @@ $tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(0);
 $tock=$ob->get_tick_count;
 
-is_bad (defined $in);				# 181
+# behavior changed in 1.0.2 to return "0" on a "0"-requested read
+is_ok ($in == 0);				# 181
 $out=$tock - $tick;
 is_ok ($out < 100);				# 182
 print "<0> elapsed time=$out\n";

@@ -10,8 +10,8 @@
 %define maketest 0
 %define testport /dev/ttyS0
 # Be sure to change both
-%define pkgversion 1
-%define rpmversion 1.0.0
+%define pkgversion 1.000002
+%define rpmversion 1.0.2
 %define namever %{pkgname}-%{pkgversion}
 %define docs    eg TODO Changes README
 

@@ -1,7 +1,7 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Device-SerialPort
-version:      1.000001
+version:      1.000002
 version_from: SerialPort.pm
 installdirs:  site
 requires:

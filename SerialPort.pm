@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm,v 1.27 2004/03/29 17:45:10 nemies Exp $
+# $Id: SerialPort.pm,v 1.30 2004/04/25 22:47:01 nemies Exp $
 #
 # Copyright (C) 1999, Bill Birthisel
 # Copyright (C) 2000-2004 Kees Cook
@@ -37,7 +37,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 # M.mmmrrr Major minor rev
 # Odd mmm is a devel version
 # Even mmm is a stable version
-$VERSION = 1.000_001;
+$VERSION = 1.000_002;
 
 require Exporter;
 
@@ -1345,7 +1345,7 @@ sub read {
     my $wanted = shift;
     my $result = "";
     my $ok     = 0;
-    return unless ($wanted > 0);
+    return (0, "") unless ($wanted > 0);
 
     my $done = 0;
     my $count_in = 0;
@@ -1378,7 +1378,7 @@ sub read_vmin {
     my $wanted = shift;
     my $result = "";
     my $ok     = 0;
-    return unless ($wanted > 0);
+    return (0, "") unless ($wanted > 0);
 
 #	This appears dangerous under Solaris
 #    if ($self->{"C_VMIN"} != $wanted) {
@@ -1398,22 +1398,21 @@ sub read_vmin {
     my $got=0;
     #my $got = POSIX::read ($self->{FD}, $result, $wanted);
 
-# added..
     if ($ready>0) {
         $got = POSIX::read ($self->{FD}, $result, $wanted);
-# end
 
-        unless (defined $got) {
-##   	    $got = -1;	## DEBUG
-	    return (0,"") if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
-	    return (0,"") if (!$ready and (0 == $ok));
+        if (! defined $got) {
+            return (0,"") if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
+            return (0,"") if (!$ready and (0 == $ok));
 		    # at least Solaris acts like eof() in this case
-	    carp "Error #$ok in Device::SerialPort::read";
-	    return;
+            carp "Error #$ok in Device::SerialPort::read";
+            return;
         }
-# added..
+        elsif ($got == 0 && $wanted!=0) {
+            # if read returns "0" on a non-zero request, it's EOF
+            return;
+        }
     }
-# end
 
     print "read_vmin=$got, ready=$ready, result=..$result..\n" if ($Babble);
     return ($got, $result);

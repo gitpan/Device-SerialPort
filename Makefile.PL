@@ -25,7 +25,8 @@ if (@ARGV) {
 # testing.
 print "Trying to find a serial port for testing...\n";
 unless (@SERIALS) {
-	@SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1" );
+	@SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1",
+		   "/dev/tty.modem" );
 	print "(use 'perl Makefile.PL TESTPORT=<DEVICE>' to override this search)\n";
 }
 
