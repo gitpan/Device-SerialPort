@@ -4,6 +4,10 @@
 
 # Prototypes for ioctl constants do not match POSIX constants
 # so put them into implausible namespace and call them there
+#
+# It appears this is a long standing issue. In Changes5.002,
+# NETaa14422, Larry Wall comments, "It's almost like you want an
+# AUTOPROTO to go with your AUTOLOAD." POSIX.pm was his example.
 
 package SerialJunk;
 
@@ -36,11 +40,32 @@ else {
     $dtrout = pack('L', 0);
 }
 
+    # non-POSIX constants commonly defined in termios.ph
+sub OCRNL {
+    return 0 unless (defined &SerialJunk::OCRNL);
+    return &SerialJunk::OCRNL;
+}
+
+sub ONLCR {
+    return 0 unless (defined &SerialJunk::ONLCR);
+    return &SerialJunk::ONLCR;
+}
+
+sub ECHOKE {
+    return 0 unless (defined &SerialJunk::ECHOKE);
+    return &SerialJunk::ECHOKE;
+}
+
+sub ECHOCTL {
+    return 0 unless (defined &SerialJunk::ECHOCTL);
+    return &SerialJunk::ECHOCTL;
+}
+
 use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 require Exporter;
 
@@ -60,6 +85,16 @@ $EXPORT_TAGS{ALL} = \@EXPORT_OK;
 
 #### Package variable declarations ####
 
+# parameters that must be included in a "save" and "checking subs"
+
+my %validate =	(
+		ALIAS		=> "alias",
+		E_MSG		=> "error_msg",
+		RCONST		=> "read_const_time",
+		RTOT		=> "read_char_time",
+		U_MSG		=> "user_msg",
+		);
+
 # Linux-specific constant for Hardware Handshaking
 sub CRTSCTS { 020000000000 }
 
@@ -68,6 +103,15 @@ sub B57600  { 0010001 }
 sub B115200 { 0010002 }
 sub B230400 { 0010003 }
 sub B460800 { 0010004 }
+
+my @termios_fields = (
+		     "C_CFLAG",
+		     "C_IFLAG",
+		     "C_ISPEED",
+		     "C_LFLAG",
+		     "C_OFLAG",
+		     "C_OSPEED"
+		     );
 
 my %c_cc_fields = (
 		   VEOF     => &POSIX::VEOF,
@@ -120,6 +164,7 @@ my @Yes_resp = (
 my @binary_opt = ( 0, 1 );
 my @byte_opt = (0, 255);
 
+my $cfg_file_sig="Device::SerialPort_Configuration_File -- DO NOT EDIT --\n";
 
 ## my $null=[];
 my $null=0;
@@ -127,8 +172,8 @@ my $zero=0;
 
 # Preloaded methods go here.
 
-sub GetTickCount {
-	# clone of Win32::GetTickCount - probably same 49 day problem
+sub get_tick_count {
+	# clone of Win32::GetTickCount - perhaps same 49 day problem
     my ($real2, $user2, $system2, $cuser2, $csystem2) = POSIX::times();
     $real2 *= 10.0;
     ## printf "real2 = %8.0f\n", $real2;
@@ -144,7 +189,15 @@ sub OS_Error { print "Device::SerialPort OS_Error\n"; }
 sub set_test_mode_active {
     return unless (@_ == 2);
     $testactive = $_[1];     # allow "off"
-    return 1;
+    my @fields = @termios_fields;
+    my $item;
+    foreach $item (keys %c_cc_fields) {
+	push @fields, "C_$item";
+    }
+    foreach $item (keys %validate) {
+	push @fields, "$item";
+    }
+    return @fields;
 }
 
 sub nocarp { return $testactive }
@@ -271,6 +324,7 @@ sub new {
     &write_settings($self);
 
     $self->{ALIAS} = $self->{NAME};	# so "\\.\+++" can be changed
+##    print "opening $self->{NAME}\n"; ## DEBUG ##
 
     # "private" data
     $self->{"_DEBUG"}    	= 0;
@@ -278,6 +332,21 @@ sub new {
     $self->{E_MSG}     		= 0;
     $self->{RCONST}   		= 0;
     $self->{RTOT}   		= 0;
+    $self->{"_T_INPUT"}		= "";
+    $self->{"_LOOK"}		= "";
+    $self->{"_LASTLOOK"}	= "";
+    $self->{"_LASTLINE"}	= "";
+    $self->{"_CLASTLINE"}	= "";
+    $self->{"_SIZE"}		= 1;
+    $self->{OFS}		= "";
+    $self->{ORS}		= "";
+    $self->{"_LMATCH"}		= "";
+    $self->{"_LPATT"}		= "";
+    $self->{"_PROMPT"}		= "";
+    $self->{"_MATCH"}		= [];
+    $self->{"_CMATCH"}		= [];
+    @{ $self->{"_MATCH"} }	= "\n";
+    @{ $self->{"_CMATCH"} }	= "\n";
 
     bless ($self, $class);
     return $self;
@@ -307,6 +376,163 @@ sub write_settings {
     1;
 }
 
+sub save {
+    my $self = shift;
+    my $item;
+    my $getsub;
+    my $value;
+
+    return unless (@_);
+
+    my $filename = shift;
+    unless ( open CF, ">$filename" ) {
+        carp "can't open file: $filename"; 
+        return;
+    }
+    print CF "$cfg_file_sig";
+    print CF "$self->{NAME}\n";
+	# used to "reopen" so must be DEVICE=NAME
+
+        # put current values from Termios structure FIRST
+    foreach $item (@termios_fields) {
+	printf CF "$item,%d\n", $self->{"$item"};
+    }
+    foreach $item (keys %c_cc_fields) {
+	printf CF "C_$item,%d\n", $self->{"C_$item"};
+    }
+    
+    no strict 'refs';		# for $gosub
+    while (($item, $getsub) = each %validate) {
+        chomp $getsub;
+	$value = scalar &$getsub($self);
+        print CF "$item,$value\n";
+    }
+    use strict 'refs';
+    close CF;
+    if ($Babble) {
+        print "wrote file $filename for $self->{ALIAS}\n";
+    }
+    1;
+}
+
+# parse values for start/restart
+sub get_start_values {
+    return unless (@_ == 2);
+    my $self = shift;
+    my $filename = shift;
+
+    unless ( open CF, "<$filename" ) {
+        carp "can't open file: $filename"; 
+        return;
+    }
+    my ($signature, $name, @values) = <CF>;
+    close CF;
+    
+    unless ( $cfg_file_sig eq $signature ) {
+        carp "Invalid signature in $filename: $signature"; 
+        return;
+    }
+    chomp $name;
+    unless ( $self->{NAME} eq $name ) {
+        carp "Invalid Port DEVICE=$self->{NAME} in $filename: $name"; 
+        return;
+    }
+    if ($Babble or not $self) {
+        print "signature = $signature";
+        print "name = $name\n";
+        if ($Babble) {
+            print "values:\n";
+            foreach (@values) { print "    $_"; }
+        }
+    }
+    my $item;
+    my @fields = @termios_fields;
+    foreach $item (keys %c_cc_fields) {
+	push @fields, "C_$item";
+    }
+    my %termios;
+    foreach $item (@fields) {
+	$termios{$item} = 1;
+    }
+    my $key;
+    my $value;
+    my $gosub;
+    my $fault = 0;
+    no strict 'refs';		# for $gosub
+    foreach $item (@values) {
+        chomp $item;
+        ($key, $value) = split (/,/, $item);
+        if ($value eq "") { $fault++ }
+	elsif (defined $termios{$key}) {
+	    $self->{"$key"} = $value;
+	}
+        else {
+            $gosub = $validate{$key};
+            unless (defined &$gosub ($self, $value)) {
+    	        carp "Invalid parameter for $key=$value   "; 
+    	        return;
+	    }
+        }
+    }
+    use strict 'refs';
+    if ($fault) {
+        carp "Invalid value in $filename"; 
+        undef $self;
+        return;
+    }
+    1;
+}
+
+sub restart {
+    return unless (@_ == 2);
+    my $self = shift;
+    my $filename = shift;
+    get_start_values($self, $filename);
+    write_settings($self);
+}
+
+sub start {
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
+
+    return unless (@_);
+    my $filename = shift;
+
+    unless ( open CF, "<$filename" ) {
+        carp "can't open file: $filename"; 
+        return;
+    }
+    my ($signature, $name, @values) = <CF>;
+    close CF;
+    
+    unless ( $cfg_file_sig eq $signature ) {
+        carp "Invalid signature in $filename: $signature"; 
+        return;
+    }
+    chomp $name;
+    my $self  = new ($class, $name);
+    if ($Babble or not $self) {
+        print "signature = $signature";
+        print "class = $class\n";
+        print "name = $name\n";
+        if ($Babble) {
+            print "values:\n";
+            foreach (@values) { print "    $_"; }
+        }
+    }
+    if ($self) {
+        if ( get_start_values($self, $filename) ) {
+            write_settings ($self);
+	}
+        else {
+            carp "Invalid value in $filename"; 
+            undef $self;
+            return;
+        }
+    }
+    return $self;
+}
+
 # true/false capabilities (read only)
 # currently just constants in the POSIX case
 
@@ -324,7 +550,7 @@ sub is_rs232			{ return 1; }
 sub is_modem			{ return 0; } # Win32-specific
 sub can_rtscts			{ return 1; }
 sub can_xonxoff			{ return 1; }
-sub can_xon_char		{ return 0; } # use stty
+sub can_xon_char		{ return 1; } # use stty
 sub can_spec_char		{ return 0; } # use stty
 sub can_interval_timeout	{ return 0; } # currently
 sub can_total_timeout		{ return 1; } # currently
@@ -482,6 +708,308 @@ sub stopbits {
     return 1;
 }
 
+sub is_xon_char {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VSTART"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VSTART"};
+}
+
+sub is_xoff_char {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VSTOP"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VSTOP"};
+}
+
+sub is_stty_intr {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VINTR"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VINTR"};
+}
+
+sub is_stty_quit {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VQUIT"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VQUIT"};
+}
+
+sub is_stty_eof {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VEOF"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VEOF"};
+}
+
+sub is_stty_eol {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VEOL"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VEOL"};
+}
+
+sub is_stty_erase {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VERASE"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VERASE"};
+}
+
+sub is_stty_kill {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VKILL"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VKILL"};
+}
+
+sub is_stty_susp {
+    my $self = shift;
+    if (@_) {
+	my $v = int shift;
+	return if (($v < 0) or ($v > 255));
+	$self->{"C_VSUSP"} = $v;
+	write_settings($self);
+    }
+    return $self->{"C_VSUSP"};
+}
+
+sub stty_echo {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHO;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHO;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHO) ? 1 : 0;
+}
+
+sub stty_echoe {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHOE;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHOE;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHOE) ? 1 : 0;
+}
+
+sub stty_echok {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHOK;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHOK;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHOK) ? 1 : 0;
+}
+
+sub stty_echonl {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHONL;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHONL;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHONL) ? 1 : 0;
+}
+
+	# non-POSIX
+sub stty_echoke {
+    my $self = shift;
+    return unless ECHOKE;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHOKE;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHOKE;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHOKE) ? 1 : 0;
+}
+
+	# non-POSIX
+sub stty_echoctl {
+    my $self = shift;
+    return unless ECHOCTL;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ECHOCTL;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ECHOCTL;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ECHOCTL) ? 1 : 0;
+}
+
+sub stty_istrip {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_IFLAG"} |= ISTRIP;
+        } else {
+	    $self->{"C_IFLAG"} &= ~ISTRIP;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_IFLAG"} & ISTRIP) ? 1 : 0;
+}
+
+sub stty_icrnl {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_IFLAG"} |= ICRNL;
+        } else {
+	    $self->{"C_IFLAG"} &= ~ICRNL;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_IFLAG"} & ICRNL) ? 1 : 0;
+}
+
+sub stty_igncr {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_IFLAG"} |= IGNCR;
+        } else {
+	    $self->{"C_IFLAG"} &= ~IGNCR;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_IFLAG"} & IGNCR) ? 1 : 0;
+}
+
+sub stty_inlcr {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_IFLAG"} |= INLCR;
+        } else {
+	    $self->{"C_IFLAG"} &= ~INLCR;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_IFLAG"} & INLCR) ? 1 : 0;
+}
+
+	# non-POSIX
+sub stty_ocrnl {
+    my $self = shift;
+    return unless OCRNL;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_OFLAG"} |= OCRNL;
+        } else {
+	    $self->{"C_OFLAG"} &= ~OCRNL;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_OFLAG"} & OCRNL) ? 1 : 0;
+}
+
+	# non-POSIX
+sub stty_onlcr {
+    my $self = shift;
+    return unless ONLCR;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_OFLAG"} |= ONLCR;
+        } else {
+	    $self->{"C_OFLAG"} &= ~ONLCR;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_OFLAG"} & ONLCR) ? 1 : 0;
+}
+
+sub stty_opost {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_OFLAG"} |= OPOST;
+        } else {
+	    $self->{"C_OFLAG"} &= ~OPOST;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_OFLAG"} & OPOST) ? 1 : 0;
+}
+
+sub stty_isig {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ISIG;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ISIG;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ISIG) ? 1 : 0;
+}
+
+sub stty_icanon {
+    my $self = shift;
+    if (@_) {
+	if ( yes_true( shift ) ) {
+	    $self->{"C_LFLAG"} |= ICANON;
+        } else {
+	    $self->{"C_LFLAG"} &= ~ICANON;
+	}
+	write_settings($self);
+    }
+    return ($self->{"C_LFLAG"} & ICANON) ? 1 : 0;
+}
+
 sub alias {
     my $self = shift;
     if (@_) { $self->{ALIAS} = shift; }	# should return true for legal names
@@ -516,7 +1044,40 @@ sub read {
     my $wanted = shift;
     my $result = "";
     my $ok     = 0;
-    return undef unless ($wanted > 0);
+    return unless ($wanted > 0);
+
+    my $done = 0;
+    my $count_in = 0;
+    my $string_in = "";
+    my $in2 = "";
+    my $bufsize = 255;	# VMIN max (declared as char)
+
+    while ($done < $wanted) {
+	my $size = $wanted - $done;
+        if ($size > $bufsize) { $size = $bufsize; }
+	($count_in, $string_in) = $self->read_vmin($size);
+	if ($count_in) {
+            $in2 .= $string_in;
+	    $done += $count_in;
+	}
+	elsif ($done) {
+	    last;
+	}
+        else {
+            return if (!defined $count_in);
+	    last;
+        }
+    }
+    return ($done, $in2);
+}
+
+sub read_vmin {
+    return undef unless (@_ == 2);
+    my $self = shift;
+    my $wanted = shift;
+    my $result = "";
+    my $ok     = 0;
+    return unless ($wanted > 0);
 
     if ($self->{"C_VMIN"} != $wanted) {
 	$self->{"C_VMIN"} = $wanted;
@@ -534,14 +1095,367 @@ sub read {
 
     my $got = POSIX::read ($self->{FD}, $result, $wanted);
 
-    unless (defined $got) { $got = -1; }
-    if ($got == -1) {
+    unless (defined $got) {
+##	$got = -1;	## DEBUG
 	return (0,"") if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
-	carp "Error #$ok in Device::SerialPort::read"
+	return (0,"") if (!$ready and (0 == $ok));
+		# at least Solaris acts like eof() in this case
+	carp "Error #$ok in Device::SerialPort::read";
+	return;
     }
 
-    print "read=$got, result=..$result..\n" if ($Babble);
+    print "read_vmin=$got, ready=$ready, result=..$result..\n" if ($Babble);
     return ($got, $result);
+}
+
+sub are_match {
+    my $self = shift;
+    my $pat;
+    my $patno = 0;
+    my $reno = 0;
+    my $re_next = 0;
+    if (@_) {
+	@{ $self->{"_MATCH"} } = @_;
+	if ($] >= 5.005) {
+	    @{ $self->{"_CMATCH"} } = ();
+	    while ($pat = shift) {
+	        if ($re_next) {
+		    $re_next = 0;
+	            eval 'push (@{ $self->{"_CMATCH"} }, qr/$pat/)';
+		} else {
+	            push (@{ $self->{"_CMATCH"} }, $pat);
+		}
+	        if ($pat eq "-re") {
+		    $re_next++;
+	        }
+	    }
+	} else {
+	    @{ $self->{"_CMATCH"} } = @_;
+	}
+    }
+    return @{ $self->{"_MATCH"} };
+}
+
+sub lookclear {
+    my $self = shift;
+    if (nocarp && (@_ == 1)) {
+        $self->{"_T_INPUT"} = shift;
+    } 
+    $self->{"_LOOK"}	 = "";
+    $self->{"_LASTLOOK"} = "";
+    $self->{"_LMATCH"}	 = "";
+    $self->{"_LPATT"}	 = "";
+    return if (@_);
+    1;
+}
+
+sub linesize {
+    my $self = shift;
+    if (@_) {
+	my $val = int shift;
+	return if ($val < 0);
+        $self->{"_SIZE"} = $val;
+    }
+    return $self->{"_SIZE"};
+}
+
+sub lastline {
+    my $self = shift;
+    if (@_) {
+        $self->{"_LASTLINE"} = shift;
+	if ($] >= 5.005) {
+	    eval '$self->{"_CLASTLINE"} = qr/$self->{"_LASTLINE"}/';
+	} else {
+            $self->{"_CLASTLINE"} = $self->{"_LASTLINE"};
+	}
+    }
+    return $self->{"_LASTLINE"};
+}
+
+sub matchclear {
+    my $self = shift;
+    my $found = $self->{"_LMATCH"};
+    $self->{"_LMATCH"}	 = "";
+    return if (@_);
+    return $found;
+}
+
+sub lastlook {
+    my $self = shift;
+    return if (@_);
+    return ( $self->{"_LMATCH"}, $self->{"_LASTLOOK"},
+	     $self->{"_LPATT"}, $self->{"_LOOK"} );
+}
+
+sub lookfor {
+    my $self = shift;
+    my $size = 0;
+    if (@_) { $size = shift; }
+    my $loc = "";
+    my $count_in = 0;
+    my $string_in = "";
+    $self->{"_LMATCH"}	 = "";
+    $self->{"_LPATT"}	 = "";
+
+    if ( ! $self->{"_LOOK"} ) {
+        $loc = $self->{"_LASTLOOK"};
+    }
+
+    if ($size) {
+####    my ($bbb, $iii, $ooo, $eee) = status($self);
+####	if ($iii > $size) { $size = $iii; }
+	($count_in, $string_in) = $self->read($size);
+	return unless ($count_in);
+        $loc .= $string_in;
+    }
+    else {
+	$loc .= $self->input;
+    }
+
+    if ($loc ne "") {
+####	if ($self->{icrnl}) { $loc =~ tr/\r/\n/; }
+	my $n_char;
+	my $mpos;
+####	my $erase_is_bsdel = 0;
+####	my $nl_after_kill = "";
+####	my $clear_after_kill = 0;
+####	my $echo_ctl = 0;
+	my $lookbuf;
+	my $re_next = 0;
+	my $got_match = 0;
+	my $pat;
+####	my $lf_erase = "";
+####	my $lf_kill = "";
+####	my $lf_eof = "";
+####	my $lf_quit = "";
+####	my $lf_intr = "";
+####	my $nl_2_crnl = 0;
+####	my $cr_2_nl = 0;
+
+####	if ($self->{opost}) {
+####	    $nl_2_crnl = $self->{onlcr};
+####	    $cr_2_nl = $self->{ocrnl};
+####	}
+
+####	if ($self->{echo}) {
+####	    $erase_is_bsdel = $self->{echoe};
+####	    if ($self->{echok}) {
+####	        $nl_after_kill = $self->{onlcr} ? "\r\n" : "\n";
+####	    }
+####	    $clear_after_kill = $self->{echoke};
+####	    $echo_ctl = $self->{echoctl};
+####	}
+
+####	if ($self->{icanon}) {
+####	    $lf_erase = $self->{erase};
+####	    $lf_kill = $self->{s_kill};
+####	    $lf_eof = $self->{s_eof};
+####	}
+
+####	if ($self->{isig}) {
+####	    $lf_quit = $self->{quit};
+####	    $lf_intr = $self->{intr};
+####	}
+	
+	my @loc_char = split (//, $loc);
+	while (defined ($n_char = shift @loc_char)) {
+##	    printf STDERR "0x%x ", ord($n_char);
+####	    if ($n_char eq $lf_erase) {
+####	        if ($erase_is_bsdel && (length $self->{"_LOOK"}) ) {
+####		    $mpos = chop $self->{"_LOOK"};
+####	            $self->write($self->{bsdel});
+####	            if ($echo_ctl && (($mpos lt "@")|($mpos eq chr(127)))) {
+####	                $self->write($self->{bsdel});
+####		    }
+####		} 
+####	    }
+####	    elsif ($n_char eq $lf_kill) {
+####		$self->{"_LOOK"} = "";
+####	        $self->write($self->{clear}) if ($clear_after_kill);
+####	        $self->write($nl_after_kill);
+####	        $self->write($self->{"_PROMPT"});
+####	    }
+####	    elsif ($n_char eq $lf_intr) {
+####		$self->{"_LOOK"}     = "";
+####		$self->{"_LASTLOOK"} = "";
+####		return;
+####	    }
+####	    elsif ($n_char eq $lf_quit) {
+####		exit;
+####	    }
+####	    else {
+		$mpos = ord $n_char;
+####		if ($self->{istrip}) {
+####		    if ($mpos > 127) { $n_char = chr($mpos - 128); }
+####		}
+                $self->{"_LOOK"} .= $n_char;
+##	        print $n_char;
+####	        if ($cr_2_nl) { $n_char =~ s/\r/\n/os; }
+####	        if ($nl_2_crnl) { $n_char =~ s/\n/\r\n/os; }
+####	        if (($mpos < 32)  && $echo_ctl &&
+####			($mpos != is_stty_eol($self))) {
+####		    $n_char = chr($mpos + 64);
+####	            $self->write("^$n_char");
+####		}
+####		elsif (($mpos == 127) && $echo_ctl) {
+####	            $self->write("^.");
+####		}
+####		elsif ($self->{echonl} && ($n_char =~ "\n")) {
+####		    # also writes "\r\n" for onlcr
+####	            $self->write($n_char);
+####		}
+####		elsif ($self->{echo}) {
+####		    # also writes "\r\n" for onlcr
+####	            $self->write($n_char);
+####		}
+		$lookbuf = $self->{"_LOOK"};
+####		if (($lf_eof ne "") and ($lookbuf =~ /$lf_eof$/)) {
+####		    $self->{"_LOOK"}     = "";
+####		    $self->{"_LASTLOOK"} = "";
+####		    return $lookbuf;
+####		}
+		$count_in = 0;
+		foreach $pat ( @{ $self->{"_CMATCH"} } ) {
+		    if ($pat eq "-re") {
+			$re_next++;
+		        $count_in++;
+			next;
+		    }
+		    if ($re_next) {
+			$re_next = 0;
+			# always at $lookbuf end when processing single char
+		        if ( $lookbuf =~ s/$pat//s ) {
+		            $self->{"_LMATCH"} = $&;
+			    $got_match++;
+			}
+		    }
+		    elsif (($mpos = index($lookbuf, $pat)) > -1) {
+			$got_match++;
+			$lookbuf = substr ($lookbuf, 0, $mpos);
+		        $self->{"_LMATCH"} = $pat;
+		    }
+		    if ($got_match) {
+		        $self->{"_LPATT"} = $self->{"_MATCH"}[$count_in];
+		        if (scalar @loc_char) {
+		            $self->{"_LASTLOOK"} = join("", @loc_char);
+##		            print ".$self->{\"_LASTLOOK\"}.";
+                        }
+		        else {
+		            $self->{"_LASTLOOK"} = "";
+		        }
+		        $self->{"_LOOK"}     = "";
+		        return $lookbuf;
+                    }
+		    $count_in++;
+		}
+####	    }
+	}
+    }
+    return "";
+}
+
+sub streamline {
+    my $self = shift;
+    my $size = 0;
+    if (@_) { $size = shift; }
+    my $loc = "";
+    my $mpos;
+    my $count_in = 0;
+    my $string_in = "";
+    my $re_next = 0;
+    my $got_match = 0;
+    my $best_pos = 0;
+    my $pat;
+    my $match = "";
+    my $before = "";
+    my $after = "";
+    my $best_match = "";
+    my $best_before = "";
+    my $best_after = "";
+    my $best_pat = "";
+    $self->{"_LMATCH"}	 = "";
+    $self->{"_LPATT"}	 = "";
+
+    if ( ! $self->{"_LOOK"} ) {
+        $loc = $self->{"_LASTLOOK"};
+    }
+
+    if ($size) {
+####    my ($bbb, $iii, $ooo, $eee) = status($self);
+####	if ($iii > $size) { $size = $iii; }
+	($count_in, $string_in) = $self->read($size);
+	return unless ($count_in);
+        $loc .= $string_in;
+    }
+    else {
+	$loc .= $self->input;
+    }
+
+    if ($loc ne "") {
+        $self->{"_LOOK"} .= $loc;
+	$count_in = 0;
+	foreach $pat ( @{ $self->{"_CMATCH"} } ) {
+	    if ($pat eq "-re") {
+		$re_next++;
+		$count_in++;
+		next;
+	    }
+	    if ($re_next) {
+		$re_next = 0;
+	        if ( $self->{"_LOOK"} =~ /$pat/s ) {
+		    ( $match, $before, $after ) = ( $&, $`, $' );
+		    $got_match++;
+        	    $mpos = length($before);
+        	    if ($mpos) {
+        	        next if ($best_pos && ($mpos > $best_pos));
+			$best_pos = $mpos;
+			$best_pat = $self->{"_MATCH"}[$count_in];
+			$best_match = $match;
+			$best_before = $before;
+			$best_after = $after;
+	    	    } else {
+		        $self->{"_LPATT"} = $self->{"_MATCH"}[$count_in];
+		        $self->{"_LMATCH"} = $match;
+	                $self->{"_LASTLOOK"} = $after;
+		        $self->{"_LOOK"}     = "";
+		        return $before;
+		        # pattern at start will be best
+		    }
+		}
+	    }
+	    elsif (($mpos = index($self->{"_LOOK"}, $pat)) > -1) {
+		$got_match++;
+		$before = substr ($self->{"_LOOK"}, 0, $mpos);
+        	if ($mpos) {
+        	    next if ($best_pos && ($mpos > $best_pos));
+		    $best_pos = $mpos;
+		    $best_pat = $pat;
+		    $best_match = $pat;
+		    $best_before = $before;
+		    $mpos += length($pat);
+		    $best_after = substr ($self->{"_LOOK"}, $mpos);
+	    	} else {
+	            $self->{"_LPATT"} = $pat;
+		    $self->{"_LMATCH"} = $pat;
+		    $before = substr ($self->{"_LOOK"}, 0, $mpos);
+		    $mpos += length($pat);
+	            $self->{"_LASTLOOK"} = substr ($self->{"_LOOK"}, $mpos);
+		    $self->{"_LOOK"}     = "";
+		    return $before;
+		    # match at start will be best
+		}
+	    }
+	    $count_in++;
+	}
+	if ($got_match) {
+	    $self->{"_LPATT"} = $best_pat;
+	    $self->{"_LMATCH"} = $best_match;
+            $self->{"_LASTLOOK"} = $best_after;
+	    $self->{"_LOOK"}     = "";
+	    return $best_before;
+        }
+    }
+    return "";
 }
 
 sub input {
@@ -549,7 +1463,13 @@ sub input {
     my $self = shift;
     my $ok     = 0;
     my $result = "";
-    my $wanted = 4096;
+    my $wanted = 255;
+
+    if (nocarp && $self->{"_T_INPUT"}) {
+	$result = $self->{"_T_INPUT"};
+	$self->{"_T_INPUT"} = "";
+	return $result;
+    }
 
     if ( $self->{"C_VMIN"} ) {
 	$self->{"C_VMIN"} = 0;
@@ -561,9 +1481,9 @@ sub input {
     unless (defined $got) { $got = -1; }
     if ($got == -1) {
 	return "" if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
+	return "" if (0 == $ok);	# at least Solaris acts like eof()
 	carp "Error #$ok in Device::SerialPort::input"
     }
-    
     return $result;
 }
 
@@ -583,34 +1503,30 @@ sub write {
 
 sub write_drain {
     my $self = shift;
-    return undef if (@_);
-
-  POSIX::tcdrain($self->{FD});
-    return 1;
+    return if (@_);
+    return 1 if (defined POSIX::tcdrain($self->{FD}));
+    return;
 }
 
 sub purge_all {
     my $self = shift;
-    return undef if (@_);
-
-  POSIX::tcflush($self->{FD}, TCIOFLUSH);
-    return 1;
+    return if (@_);
+    return 1 if (defined POSIX::tcflush($self->{FD}, TCIOFLUSH));
+    return;
 }
 
 sub purge_rx {
     my $self = shift;
-    return undef if (@_);
-
-  POSIX::tcflush($self->{FD}, TCIFLUSH);
-    return 1;
+    return if (@_);
+    return 1 if (defined POSIX::tcflush($self->{FD}, TCIFLUSH));
+    return;
 }
 
 sub purge_tx {
     my $self = shift;
-    return undef if (@_);
-
-  POSIX::tcflush($self->{FD}, TCOFLUSH);
-    return 1;
+    return if (@_);
+    return 1 if (defined POSIX::tcflush($self->{FD}, TCOFLUSH));
+    return;
 }
 
 sub buffer_max {
@@ -834,8 +1750,8 @@ sub TIEHANDLE {
 
     return unless (@_);
 
-    my $self = new($class, shift);
-##    my $self = start($class, shift);
+##    my $self = new($class, shift);
+    my $self = start($class, shift);
     return $self;
 }
  
@@ -851,7 +1767,7 @@ sub WRITE {
     my $offset = 0;
     if (@_) { $offset = shift; }
     my $out2 = substr($buf, $offset, $len);
-    return unless ($self->PRINT($out2));
+    return unless ($self->post_print($out2));
     return length($out2);
 }
 
@@ -863,7 +1779,33 @@ sub WRITE {
 sub PRINT {
     my $self = shift;
     return unless (@_);
-    my $output = join("",@_);
+    my $ofs = $, ? $, : "";
+    if ($self->{OFS}) { $ofs = $self->{OFS}; }
+    my $ors = $\ ? $\ : "";
+    if ($self->{ORS}) { $ors = $self->{ORS}; }
+    my $output = join($ofs,@_);
+    $output .= $ors;
+    return $self->post_print($output);
+}
+
+sub output_field_separator {
+    my $self = shift;
+    my $prev = $self->{OFS};
+    if (@_) { $self->{OFS} = shift; }
+    return $prev;
+}
+
+sub output_record_separator {
+    my $self = shift;
+    my $prev = $self->{ORS};
+    if (@_) { $self->{ORS} = shift; }
+    return $prev;
+}
+
+sub post_print {
+    my $self = shift;
+    return unless (@_);
+    my $output = shift;
 ##    if ($self->stty_opost) {
 ##	if ($self->stty_ocrnl) { $output =~ s/\r/\n/osg; }
 ##	if ($self->stty_onlcr) { $output =~ s/\n/\r\n/osg; }
@@ -880,7 +1822,6 @@ sub PRINT {
 	return 0 unless ($written);
 	$done += $written;
     }
-##    $ = 0;
     1;
 }
  
@@ -903,95 +1844,73 @@ sub PRINTF {
 #      or sysread functions.
 
 sub READ {
-    carp "tied read and sysread functions not yet supported\n";
-    return;
+    return if (@_ < 3);
+    my $buf = \$_[1];
+    my ($self, $junk, $size, $offset) = @_;
+    unless (defined $offset) { $offset = 0; }
+    my $count_in = 0;
+    my $string_in = "";
+
+    ($count_in, $string_in) = $self->read($size);
+
+    my $tail = substr($$buf, $offset + $count_in);
+    my $head = substr($$buf, 0, $offset);
+    $$buf = $head.$string_in.$tail;
+    return $count_in;
 }
-####     return if (@_ < 3);
-####     my $buf = \$_[1];
-####     my ($self, $junk, $size, $offset) = @_;
-####     unless (defined $offset) { $offset = 0; }
-####     my $done = 0;
-####     my $count_in = 0;
-####     my $string_in = "";
-####     my $in2 = "";
-####     my $bufsize = $self->internal_buffer;
-#### 
-####     while ($done < $len) {
-#### 	my $size = $len - $done;
-####         if ($size > $bufsize) { $size = $bufsize; }
-#### 	($count_in, $string_in) = $self->read($size);
-#### 	if ($count_in) {
-####             $in2 .= $string_in;
-#### 	    $done += $count_in;
-#### ##	    $ = 0;
-#### 	}
-#### 	elsif ($done) {
-#### ##	    $ = 0;
-#### 	    last;
-#### 	}
-####         else {
-####             return;
-####         }
-####     }
-####     $$buf = substr($$buf, 0, $offset);
-####     substr($$buf, $offset, $done) = $in2;
-####     return $done;
-####}
 
 # READLINE this
 #      This method will be called when the handle is read from via <HANDLE>.
 #      The method should return undef when there is no more data.
  
 sub READLINE {
-    carp "READLINE and tied <FD> functions not yet supported\n";
-    return;
+    my $self = shift;
+    return if (@_);
+    my $count_in = 0;
+    my $string_in = "";
+    my $match = "";
+    my $was;
+
+    if (wantarray) {
+	my @lines;
+        for (;;) {
+            last if ($was = $self->reset_error);	# dummy, currently
+	    if ($self->stty_icanon) {
+	        ($count_in, $string_in) = $self->read_vmin(255);
+                last if (! defined $count_in);
+	    }
+	    else {
+                $string_in = $self->streamline($self->{"_SIZE"});
+                last if (! defined $string_in);
+	        $match = $self->matchclear;
+                if ( ($string_in ne "") || ($match ne "") ) {
+		    $string_in .= $match;
+                }
+	    }
+            push (@lines, $string_in);
+	    last if ($string_in =~ /$self->{"_CLASTLINE"}/s);
+        }
+	return @lines if (@lines);
+        return;
+    }
+    else {
+	my $last_icanon = $self->stty_icanon;
+        $self->stty_icanon(1);
+        for (;;) {
+            last if ($was = $self->reset_error);	# dummy, currently
+            $string_in = $self->lookfor($self->{"_SIZE"});
+            last if (! defined $string_in);
+	    $match = $self->matchclear;
+            if ( ($string_in ne "") || ($match ne "") ) {
+		$string_in .= $match; # traditional <HANDLE> behavior
+	        $self->stty_icanon(0);
+	        return $string_in;
+	    }
+        }
+	$self->stty_icanon($last_icanon);
+        return;
+    }
 }
-##    my $self = shift;
-##    return if (@_);
-##    my $gotit = "";
-##    my $match = "";
-##    my $was;
-##
-##    if (wantarray) {
-##	my @lines;
-##        for (;;) {
-##            $was = $self->reset_error;
-##	    if ($was) {
-##	        $ = 1117; # ERROR_IO_DEVICE
-##		return @lines if (@lines);
-##                return;
-##	    }
-##            if (! defined ($gotit = $self->streamline($self->{"_SIZE"}))) {
-##		return @lines if (@lines);
-##                return;
-##            }
-##	    $match = $self->matchclear;
-##            if ( ($gotit ne "") || ($match ne "") ) {
-##	        $ = 0;
-##		$gotit .= $match;
-##                push (@lines, $gotit);
-##		return @lines if ($gotit =~ /$self->{"_CLASTLINE"}/s);
-##            }
-##        }
-##    }
-##    else {
-##        for (;;) {
-##            $was = $self->reset_error;
-##	    if ($was) {
-##	        $ = 1117; # ERROR_IO_DEVICE
-##                return;
-##	    }
-##            if (! defined ($gotit = $self->lookfor($self->{"_SIZE"}))) {
-##                return;
-##            }
-##	    $match = $self->matchclear;
-##            if ( ($gotit ne "") || ($match ne "") ) {
-##	        $ = 0;
-##                return $gotit.$match;  # traditional <HANDLE> behavior
-##            }
-##        }
-##    }
-##}
  
 # GETC this
 #      This method will be called when the getc function is called.
@@ -1011,6 +1930,7 @@ sub GETC {
  
 sub CLOSE {
     my $self = shift;
+    $self->write_drain;
     my $success = $self->close;
     if ($Babble) { printf "CLOSE result:%d\n", $success; }
     return $success;
@@ -1030,7 +1950,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
 =head1 SYNOPSIS
 
-  use Device::SerialPort;
+  use Device::SerialPort 0.06;
 
 =head2 Constructors
 
@@ -1038,21 +1958,16 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
        || die "Can't open $PortName: $!\n";
 
-       # not implemented yet
   $PortObj = start Device::SerialPort ($Configuration_File_Name)
        || die "Can't start $Configuration_File_Name: $!\n";
 
-       # $Configuration_File_Name not implemented yet
-       # if you use this, expect future changes
-  $PortObj = tie (*FH, 'Device::SerialPort', $PortName)
-       || die "Can't tie using $PortName: $!\n";
+  $PortObj = tie (*FH, 'Device::SerialPort', $Configuration_File_Name)
+       || die "Can't tie using $Configuration_File_Name: $!\n";
 
 =head2 Configuration Utility Methods
 
   $PortObj->alias("MODEM1");
 
-       # before using start, restart, or tie
-       # not implemented yet
   $PortObj->save($Configuration_File_Name)
        || warn "Can't save $Configuration_File_Name: $!\n";
 
@@ -1061,11 +1976,11 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
        # rereads file to either return open port to a known state
        # or switch to a different configuration on the same port
-       # not implemented yet
   $PortObj->restart($Configuration_File_Name)
-       || warn "Can't reread $Configuration_File_Name: $^E\n";
+       || warn "Can't reread $Configuration_File_Name: $!\n";
 
-  Device::SerialPort->set_test_mode_active(1);	# test suite use only
+      # test suite use only
+  @necessary_param = Device::SerialPort->set_test_mode_active(1);
 
       # exported by :PARAM
   nocarp || carp "Something fishy";
@@ -1121,12 +2036,12 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj->is_modem;			# 0 Win32-specific
   $PortObj->can_rtscts;			# 1
   $PortObj->can_xonxoff;		# 1
-  $PortObj->can_xon_char;		# 0 use stty
+  $PortObj->can_xon_char;		# 1 use stty
   $PortObj->can_spec_char;		# 0 use stty
-  $PortObj->can_interval_timeout;	# 1 currently
-  $PortObj->can_total_timeout;		# 0 currently
+  $PortObj->can_interval_timeout;	# 0 currently
+  $PortObj->can_total_timeout;		# 1 currently
   $PortObj->can_ioctl;			# automatically detected by eval
-  
+
 =head2 Operating Methods
 
   ($count_in, $string_in) = $PortObj->read($InBytes);
@@ -1160,26 +2075,31 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj->read_const_time(100);	# const time for read (milliseconds)
   $PortObj->read_char_time(5);		# avg time between read char
 
+  $milliseconds = $PortObj->get_tick_count;
+
 =head2 Methods used with Tied FileHandles
 
-      # will eventually tie with $Configuration_File_Name
-  $PortObj = tie (*FH, 'Device::SerialPort', $Portname)
+  $PortObj = tie (*FH, 'Device::SerialPort', $Configuration_File_Name)
        || die "Can't tie: $!\n";             ## TIEHANDLE ##
 
   print FH "text";                           ## PRINT     ##
   $char = getc FH;                           ## GETC      ##
   syswrite FH, $out, length($out), 0;        ## WRITE     ##
-  ## $line = <FH>;                           ## READLINE  ## not yet supported
-  ## @lines = <FH>;                          ## READLINE  ## not yet supported
+  $line = <FH>;                              ## READLINE  ##
+  @lines = <FH>;                             ## READLINE  ##
   printf FH "received: %s", $line;           ## PRINTF    ##
-  read (FH, $in, 5, 0) or die "$^E";         ## READ      ##
-  sysread (FH, $in, 5, 0) or die "$^E";      ## READ      ##
+  read (FH, $in, 5, 0) or die "$!";          ## READ      ##
+  sysread (FH, $in, 5, 0) or die "$!";       ## READ      ##
   close FH || warn "close failed";           ## CLOSE     ##
   undef $PortObj;
   untie *FH;                                 ## DESTROY   ##
 
-  ## $PortObj->linesize(10);		# with READLINE not yet supported
-  ## $PortObj->lastline("_GOT_ME_");	# with READLINE, list only
+  $PortObj->linesize(10);		     # with READLINE
+  $PortObj->lastline("_GOT_ME_");	     # with READLINE, list only
+
+      ## with PRINT and PRINTF, return previous value of separator
+  $old_ors = $PortObj->output_record_separator("RECORD");
+  $old_ofs = $PortObj->output_field_separator("COMMA");
 
 =head2 Destructors
 
@@ -1195,12 +2115,12 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
   untie *FH;
 
-=head2 Methods for I/O Processing (not yet implemented)
+=head2 Methods for I/O Processing
 
   $PortObj->are_match("text", "\n");	# possible end strings
   $PortObj->lookclear;			# empty buffers
   $PortObj->write("Feed Me:");		# initial prompt
-  $PortObj->is_prompt("More Food:");	# new prompt after "kill" char
+  $PortObj->is_prompt("More Food:");	# not implemented
 
   my $gotit = "";
   until ("" ne $gotit) {
@@ -1263,10 +2183,10 @@ The second constructor, B<start> is intended to simplify scripts which
 need a constant setup. It executes all the steps from B<new> to
 B<write_settings> based on a previously saved configuration. This
 constructor will return C<undef> on a bad configuration file or failure
-of a validity check. The returned object is ready for access.
+of a validity check. The returned object is ready for access. This is
+new and experimental for Version 0.055.
 
-       # NOT yet implemented
-  $PortObj2 = start Win32::SerialPort ($Configuration_File_Name)
+  $PortObj2 = start Device::SerialPort ($Configuration_File_Name)
        || die;
 
 The third constructor, B<tie>, will combine the B<start> with Perl's
@@ -1274,11 +2194,26 @@ support for tied FileHandles (see I<perltie>). Device::SerialPort will
 implement the complete set of methods: TIEHANDLE, PRINT, PRINTF,
 WRITE, READ, GETC, READLINE, CLOSE, and DESTROY. Tied FileHandle
 support is new with Version 0.04 and the READ and READLINE methods
-are not yet supported. The implementation attempts to mimic
-STDIN/STDOUT behaviour as closely as possible. Currently, the port
-name is used in place of a C<$Configuration_File_Name>.
+were added in Version 0.06. In "scalar context", READLINE sets B<stty_icanon>
+to do character processing and calls B<lookfor>. It restores B<stty_icanon>
+after the read. In "list context", READLINE does Canonical (line) reads if
+B<stty_icanon> is set or calls B<streamline> if it is not. (B<stty_icanon>
+is not altered). The B<streamline> choice allows duplicating the operation
+of Win32::SerialPort for cross-platform scripts. 
 
-  $PortObj2 = tie (*FH, 'Device::SerialPort', $PortName)
+The implementation attempts to mimic STDIN/STDOUT behaviour as closely
+as possible: calls block until done and data strings that exceed internal
+buffers are divided transparently into multiple calls. In Version 0.06,
+the output separators C<$,> and C<$\> are also applied to PRINT if set.
+The B<output_record_separator> and B<output_field_separator> methods can set
+I<Port-FileHandle-Specific> versions of C<$,> and C<$\> if desired. Since
+PRINTF is treated internally as a single record PRINT, C<$\> will be applied.
+Output separators are not applied to WRITE (called as
+C<syswrite FH, $scalar, $length, [$offset]>).
+The input_record_separator C<$/> is not explicitly supported - but an
+identical function can be obtained with a suitable B<are_match> setting.
+
+  $PortObj2 = tie (*FH, 'Device::SerialPort', $Configuration_File_Name)
        || die;
 
 The tied FileHandle methods may be combined with the Device::SerialPort
@@ -1351,7 +2286,7 @@ These methods are designed to support devices, such as the X10 "FireCracker"
 control and some modems, which require pulses on these lines to signal
 specific events or data. Timing for the I<active> part of B<pulse_break_on>
 is handled by I<POSIX::tcsendbreak(0)>, which sends a 250-500 millisecond
-BREAK pulse.
+BREAK pulse. It is I<NOT> guaranteed to block until done.
 
   $PortObj->pulse_break_on($milliseconds);
   $PortObj->pulse_rts_on($milliseconds);
@@ -1371,6 +2306,10 @@ The Win32 Serial Comm API provides extensive information concerning
 the capabilities and options available for a specific port (and
 instance). This module will return suitable responses to facilitate
 porting code from that environment.
+
+The B<get_tick_count> method is a clone of the I<Win32::GetTickCount()>
+function. It matches a corresponding method in I<Win32::CommPort>.
+It returns time in milliseconds - but can be used in cross-platform scripts.
 
 =over 8
 
@@ -1405,6 +2344,160 @@ an invalid or unexpected argument). Only the baudrate, parity, databits,
 stopbits, and handshake methods currently support this feature.
 
 =back
+
+=head2 Stty Shortcuts
+
+Version 0.06 adds primitive methods to modify port parameters that would
+otherwise require a C<system("stty...");> command. These act much like
+the identically-named methods in Win32::SerialPort. However, they are
+initialized from "current stty settings" when the port is opened rather
+than from defaults. And like I<stty settings>, they are passed to the
+serial driver and apply to all operations rather than only to I/O
+processed via the B<lookfor> method or the I<tied FileHandle> methods.
+Each returns the current setting for the parameter. There are no "global"
+or "combination" parameters - you still need C<system("stty...")> for that.
+
+The methods which handle CHAR parameters set and return values as C<ord(CHAR)>.
+This corresponds to the settings in the I<POSIX termios cc_field array>. You
+are unlikely to actually want to modify most of these. They reflect the
+special characters which can be set by I<stty>.
+
+  $PortObj->is_xon_char($num_char);	# VSTART (stty start=.)
+  $PortObj->is_xoff_char($num_char);	# VSTOP
+  $PortObj->is_stty_intr($num_char);	# VINTR
+  $PortObj->is_stty_quit($num_char);	# VQUIT
+  $PortObj->is_stty_eof($num_char);	# VEOF
+  $PortObj->is_stty_eol($num_char);	# VEOL
+  $PortObj->is_stty_erase($num_char);	# VERASE
+  $PortObj->is_stty_kill($num_char);	# VKILL
+  $PortObj->is_stty_susp($num_char);	# VSUSP
+
+Binary settings supported by POSIX will return 0 or 1. Several parameters
+settable by I<stty> do not yet have shortcut methods. Contact me if you
+need one that is not supported. These are the common choices. Try C<man stty>
+if you are not sure what they do.
+
+  $PortObj->stty_echo;
+  $PortObj->stty_echoe;
+  $PortObj->stty_echok;
+  $PortObj->stty_echonl;
+  $PortObj->stty_istrip;
+  $PortObj->stty_icrnl;
+  $PortObj->stty_igncr;
+  $PortObj->stty_inlcr;
+  $PortObj->stty_opost;
+  $PortObj->stty_isig;
+  $PortObj->stty_icanon;
+
+The following methods require successfully loading I<ioctl constants>.
+They will return C<undef> if the needed constants are not found. But
+the method calls may still be used without syntax errors or warnings
+even in that case.
+
+  $PortObj->stty_ocrlf;
+  $PortObj->stty_onlcr;
+  $PortObj->stty_echoke;
+  $PortObj->stty_echoctl;
+
+=head2 Lookfor and I/O Processing 
+
+Some communications programs have a different need - to collect
+(or discard) input until a specific pattern is detected. For lines, the
+pattern is a line-termination. But there are also requirements to search
+for other strings in the input such as "username:" and "password:". The
+B<lookfor> method provides a consistant mechanism for solving this problem.
+It searches input character-by-character looking for a match to any of the
+elements of an array set using the B<are_match> method. It returns the
+entire input up to the match pattern if a match is found. If no match
+is found, it returns "" unless an input error or abort is detected (which
+returns undef).
+
+Unlike Win32::SerialPort, B<lookfor> does not handle backspace, echo, and
+other character processing. It expects the serial driver to handle those
+and to be controlled via I<stty>. For interacting with humans, you will
+probably want C<stty_icanon(1)> during B<lookfor> to obtain familiar
+command-line response. The actual match and the characters after it (if
+any) may also be viewed using the B<lastlook> method. It also adopts the
+convention from Expect.pm that match strings are literal text (tested using
+B<index>) unless preceeded in the B<are_match> list by a B<"-re",> entry.
+The default B<are_match> list is C<("\n")>, which matches complete lines.
+
+   my ($match, $after, $pattern, $instead) = $PortObj->lastlook;
+     # input that MATCHED, input AFTER the match, PATTERN that matched
+     # input received INSTEAD when timeout without match ("" if match)
+
+   $PortObj->are_match("text1", "-re", "pattern", "text2");
+     # possible match strings: "pattern" is a regular expression,
+     #                         "text1" and "text2" are literal strings
+
+Everything in B<lookfor> is still experimental. Please let me know if you
+use it (or can't use it), so I can confirm bug fixes don't break your code.
+For literal strings, C<$match> and C<$pattern> should be identical. The
+C<$instead> value returns the internal buffer tested by the match logic.
+A successful match or a B<lookclear> resets it to "" - so it is only useful
+for error handling such as timeout processing or reporting unexpected
+responses.
+
+The B<lookfor> method is designed to be sampled periodically (polled). Any
+characters after the match pattern are saved for a subsequent B<lookfor>.
+Internally, B<lookfor> is implemented using the nonblocking B<input> method
+when called with no parameter. If called with a count, B<lookfor> calls
+C<$PortObj-E<gt>read(count)> which blocks until the B<read> is I<Complete> or
+a I<Timeout> occurs. The blocking alternative should not be used unless a
+fault time has been defined using B<read_interval, read_const_time, and
+read_char_time>. It exists mostly to support the I<tied FileHandle>
+functions B<sysread, getc,> and B<E<lt>FHE<gt>>. When B<stty_icanon> is
+active, even the non-blocking calls will not return data until the line
+is complete.
+
+The internal buffers used by B<lookfor> may be purged by the B<lookclear>
+method (which also clears the last match). For testing, B<lookclear> can
+accept a string which is "looped back" to the next B<input>. This feature
+is enabled only when C<set_test_mode_active(1)>. Normally, B<lookclear>
+will return C<undef> if given parameters. It still purges the buffers and
+last_match in that case (but nothing is "looped back"). You will want
+B<stty_echo(0)> when exercising loopback.
+
+The B<matchclear> method is designed to handle the
+"special case" where the match string is the first character(s) received
+by B<lookfor>. In this case, C<$lookfor_return == "">, B<lookfor> does
+not provide a clear indication that a match was found. The B<matchclear>
+returns the same C<$match> that would be returned by B<lastlook> and
+resets it to "" without resetting any of the other buffers. Since the
+B<lookfor> already searched I<through> the match, B<matchclear> is used
+to both detect and step-over "blank" lines.
+
+The character-by-character processing used by B<lookfor> is fine for
+interactive activities and tasks which expect short responses. But it
+has too much "overhead" to handle fast data streams.There is also a
+B<streamline> method which is a fast, line-oriented alternative with
+just pattern searching. Since B<streamline> uses the same internal buffers,
+the B<lookclear, lastlook, are_match, and matchclear> methods act the same
+in both cases. In fact, calls to B<streamline> and B<lookfor> can be
+interleaved if desired (e.g. an interactive task that starts an upload and
+returns to interactive activity when it is complete).
+
+There are two additional methods for supporting "list context" input:
+B<lastline> sets an "end_of_file" I<Regular Expression>, and B<linesize>
+permits changing the "packet size" in the blocking read operation to allow
+tuning performance to data characteristics. These two only apply during
+B<READLINE>. The default for B<linesize> is 1. There is no default for
+the B<lastline> method.
+
+The I<Regular Expressions> set by B<are_match> and B<lastline>
+will be pre-compiled using the I<qr//> construct on Perl 5.005 and higher.
+This doubled B<lookfor> and B<streamline> speed in my tests with
+I<Regular Expressions> - but actual improvements depend on both patterns
+and input data.
+
+The functionality of B<lookfor> includes a limited subset of the capabilities
+found in Austin Schutz's I<Expect.pm> for Unix (and Tcl's expect which it
+resembles). The C<$before, $match, $pattern, and $after> return values are
+available if someone needs to create an "expect" subroutine for porting a
+script. When using multiple patterns, there is one important functional
+difference: I<Expect.pm> looks at each pattern in turn and returns the first
+match found; B<lookfor> and B<streamline> test all patterns and return the
+one found I<earliest> in the input if more than one matches.
 
 =head2 Exports
 
@@ -1455,7 +2548,11 @@ The B<read> method, and tied methods which call it, currently can use a
 fixed timeout which approximates behavior of the I<Win32::SerialPort>
 B<read_const_time> and B<read_char_time> methods. It is used internally
 by I<select>. If the timeout is set to zero, the B<read> call will return
-immediately.
+immediately. A B<read> larger than 255 bytes will be split internally
+into 255-byte POSIX calls due to limitations of I<select> and I<VMIN>.
+The timeout is reset for each 255-byte segment. Hence, for large B<reads>,
+use a B<read_const_time> suitable for a 255-byte read. All of this is
+expeimental in Version 0.055.
 
   $PortObj->read_const_time(500);	# 500 milliseconds = 0.5 seconds
   $PortObj->read_char_time(5);		# avg time between read char
@@ -1492,12 +2589,8 @@ __Please send comments and bug reports to wcbirthisel@alum.mit.edu.
 	xon_limit	xoff_limit	xon_char	xoff_char
 	eof_char	event_char	error_char	stty_intr
 	stty_quit	stty_eof	stty_eol	stty_erase
-	stty_kill	is_stty_intr	is_stty_quit	is_stty_eof
-	is_stty_eol	is_stty_erase	is_stty_kill	stty_clear
-	is_stty_clear	stty_bsdel	stty_echo	stty_echoe
-	stty_echok	stty_echonl	stty_echoke	stty_echoctl
-	stty_istrip	stty_icrnl	stty_ocrnl	stty_igncr
-	stty_inlcr	stty_onlcr	stty_isig	stty_icanon
+	stty_kill	stty_clear	is_stty_clear	stty_bsdel	
+	stty_echoke	stty_echoctl	stty_ocrnl	stty_onlcr	
 
 =head2 Win32::SerialPort Functions Not Ported to POSIX
 
@@ -1510,13 +2603,13 @@ __Please send comments and bug reports to wcbirthisel@alum.mit.edu.
 	are_databits	are_stopbits	is_handshake	xmit_imm_char
 	is_baudrate	is_parity	is_databits	is_write_char_time
 	debug_comm	is_xon_limit	is_xoff_limit	is_read_const_time
-	is_xoff_char	is_eof_char	is_event_char	is_read_char_time
+	suspend_tx	is_eof_char	is_event_char	is_read_char_time
 	is_read_buf	is_write_buf	is_buffers	is_read_interval
-	is_error_char	is_xon_char	is_stopbits	is_write_const_time
+	is_error_char	resume_tx	is_stopbits	is_write_const_time
 	is_binary	is_status	write_bg	is_parity_enable
 	is_modemlines	read_bg		read_done	write_bg
 	xoff_active	is_read_buf	is_write_buf	xon_active
-	write_done	suspend_tx	resume_tx	break_active
+	write_done	break_active
 
 =head2 "raw" Win32 API Calls and Constants
 
@@ -1580,6 +2673,6 @@ Perltoot.xxx - Tom (Christiansen)'s Object-Oriented Tutorial
 Copyright (C) 1999, Bill Birthisel. All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. 28 July 1999.
+under the same terms as Perl itself. 11 August 1999.
 
 =cut

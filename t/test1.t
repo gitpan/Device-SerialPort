@@ -1,18 +1,17 @@
 #!/usr/bin/perl -w
 
-use lib './blib/lib','../blib/lib'; # can run from here or distribution base
+use lib '.','./t','./blib/lib','../blib/lib';
+# can run from here or distribution base
 
 # Before installation is performed this script should be runnable with
 # `perl test1.t time' which pauses `time' seconds (1..5) between pages
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
-
-BEGIN { $| = 1; print "1..120\n"; }
+BEGIN { $| = 1; print "1..131\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Device::SerialPort 0.05;
+use Device::SerialPort 0.06;
+require "DefaultPort.pm";
 $loaded = 1;
 print "ok 1\n";
 
@@ -59,22 +58,26 @@ sub is_bad {
 # assume a "vanilla" port on "/dev/ttyS0"
 
 my $file = "/dev/ttyS0";
+if ($SerialJunk::Makefile_Test_Port) {
+    $file = $SerialJunk::Makefile_Test_Port;
+}
 if (exists $ENV{Makefile_Test_Port}) {
     $file = $ENV{Makefile_Test_Port};
 }
-
-## my $cfgfile = "ttyS0_test.cfg";
 
 my $naptime = 0;	# pause between output pages
 if (@ARGV) {
     $naptime = shift @ARGV;
     unless ($naptime =~ /^[0-5]$/) {
-	die "Usage: perl test?.t [ page_delay (0..5) ] [ /dev/ttySx ]";
+	die "Usage: perl test?.t [ page_delay (0..5) ] [ /dev/ttyxx ]";
     }
 }
 if (@ARGV) {
     $file = shift @ARGV;
 }
+
+my $cfgfile = "$file"."_test.cfg";
+$cfgfile =~ s/.*\///;
 
 my $fault = 0;
 my $ob;
@@ -92,7 +95,7 @@ my $tock;
 my %required_param;
 my @necessary_param = Device::SerialPort->set_test_mode_active(1);
 
-## unlink $cfgfile;
+unlink $cfgfile;
 foreach $e (@necessary_param) { $required_param{$e} = 0; }
 
 ## 2 - 5 SerialPort Global variable ($Babble);
@@ -153,7 +156,7 @@ is_ok($ob->can_rtscts);				# 17
 is_ok($ob->can_xonxoff);			# 18
 is_zero($ob->can_interval_timeout);		# 19
 is_ok($ob->can_total_timeout);			# 20
-is_zero($ob->can_xon_char);			# 21
+is_ok($ob->can_xon_char);			# 21
 if ($naptime) {
     print "++++ page break\n";
     sleep $naptime;
@@ -282,15 +285,15 @@ $e="testing is a wonderful thing - this is a 60 byte long string";
 #   123456789012345678901234567890123456789012345678901234567890
 my $line = "\r\n$e\r\n$e\r\n$e\r\n";	# about 195 MS at 9600 baud
 
-$tick=$ob->GetTickCount();
+$tick=$ob->get_tick_count;
 $pass=$ob->write($line);
 is_ok(1 == $ob->write_drain);			# 69
-$tock=$ob->GetTickCount();
+$tock=$ob->get_tick_count;
 
 is_ok($pass == 188);				# 70
 $err=$tock - $tick;
-is_bad (($err < 160) or ($err > 210));		# 71
-print "<185> elapsed time=$err\n";
+is_bad (($err < 160) or ($err > 245));		# 71
+print "<195> elapsed time=$err\n";
 
 is_ok(scalar $ob->purge_tx);			# 72
 is_ok(scalar $ob->purge_rx);			# 73
@@ -307,36 +310,76 @@ is_ok(1 == $ob->user_msg(1));			# 77
 is_ok(test_bin_list(@opts));			# 78
 is_zero(scalar $ob->error_msg);			# 79
 is_ok(1 == $ob->error_msg(1));			# 80
-undef $ob;
 
-## 81 - 115: Reopen as (mostly 5.003 Compatible) Tie
+## 81 - 164: Save and Check Configuration
 
-    # constructor = TIEHANDLE method		# 81
-unless (is_ok ($ob = tie(*PORT,'Device::SerialPort', $file))) {
-    printf "could not reopen port from $file\n";
-    exit 1;
-    # next test would die at runtime without $ob
-}
+is_ok(scalar $ob->save($cfgfile));		# 81
 
-    # tie to PRINT method
-$tick=$ob->GetTickCount();
-$pass=print PORT $line;
-is_ok(1 == $ob->write_drain);			# 82
-$tock=$ob->GetTickCount();
-
-is_ok($pass == 1);				# 83
-
-$err=$tock - $tick;
-is_bad (($err < 160) or ($err > 210));		# 84
-print "<185> elapsed time=$err\n";
+is_ok(9600 == $ob->baudrate);			# 82
+is_ok("none" eq $ob->parity);			# 83
 
 if ($naptime) {
     print "++++ page break\n";
     sleep $naptime;
 }
 
+is_ok(8 == $ob->databits);			# 84
+is_ok(1 == $ob->stopbits);			# 85
+is_ok(1 == $ob->close);				# 86
+undef $ob;
+
+## 87 - 89: Check File Headers
+
+is_ok(open CF, "$cfgfile");			# 87
+my ($signature, $name, @values) = <CF>;
+close CF;
+
+is_ok(1 == grep(/SerialPort_Configuration_File/, $signature));	# 88
+
+chomp $name;
+is_ok($name eq $file);				# 89
+
+## 90 - 91: Check that Values listed exactly once
+
+$fault = 0;
+foreach $e (@values) {
+    chomp $e;
+    ($in, $out) = split(',',$e);
+    $fault++ if ($out eq "");
+    $required_param{$in}++;
+    }
+is_zero($fault);				# 90
+
+$fault = 0;
+foreach $e (@necessary_param) {
+    $fault++ unless ($required_param{$e} ==1);
+    }
+is_zero($fault);				# 91
+
+
+## 92 - 126: Reopen as (mostly 5.003 Compatible) Tie
+
+    # constructor = TIEHANDLE method		# 92
+unless (is_ok ($ob = tie(*PORT,'Device::SerialPort', $cfgfile))) {
+    printf "could not reopen port from $cfgfile\n";
+    exit 1;
+    # next test would die at runtime without $ob
+}
+
+    # tie to PRINT method
+$tick=$ob->get_tick_count;
+$pass=print PORT $line;
+is_ok(1 == $ob->write_drain);			# 93
+$tock=$ob->get_tick_count;
+
+is_ok($pass == 1);				# 94
+
+$err=$tock - $tick;
+is_bad (($err < 160) or ($err > 245));		# 95
+print "<195> elapsed time=$err\n";
+
     # tie to PRINTF method
-$tick=$ob->GetTickCount();
+$tick=$ob->get_tick_count;
 if ( $] < 5.004 ) {
     $out=sprintf "123456789_%s_987654321", $line;
     $pass=print PORT $out;
@@ -344,118 +387,124 @@ if ( $] < 5.004 ) {
 else {
     $pass=printf PORT "123456789_%s_987654321", $line;
 }
-is_ok(1 == $ob->write_drain);			# 85
-$tock=$ob->GetTickCount();
+is_ok(1 == $ob->write_drain);			# 96
+$tock=$ob->get_tick_count;
 
-is_ok($pass == 1);				# 86
+is_ok($pass == 1);				# 97
 $err=$tock - $tick;
-is_bad (($err < 180) or ($err > 235));		# 87
-print "<205> elapsed time=$err\n";
+is_bad (($err < 180) or ($err > 265));		# 98
+print "<215> elapsed time=$err\n";
 
-is_ok (300 == $ob->read_const_time(300));	# 88
-is_ok (20 == $ob->read_char_time(20));		# 89
-$tick=$ob->GetTickCount();
+is_ok (300 == $ob->read_const_time(300));	# 99
+is_ok (20 == $ob->read_char_time(20));		# 100
+$tick=$ob->get_tick_count;
 ($in, $in2) = $ob->read(10);
-$tock=$ob->GetTickCount();
-
-is_zero ($in);					# 90
-is_ok ($in2 eq "");				# 91
-
-$err=$tock - $tick;
-is_bad (($err < 480) or ($err > 550));		# 92
-print "<500> elapsed time=$err\n";
-
-is_ok (0 == $ob->read_char_time(0));		# 93
-$tick=$ob->GetTickCount();
-$in2= getc PORT;
-$tock=$ob->GetTickCount();
-
-is_bad (defined $in2);				# 94
-$err=$tock - $tick;
-is_bad (($err < 280) or ($err > 350));		# 95
-print "<300> elapsed time=$err\n";
-
-is_ok (0 == $ob->read_const_time(0));		# 96
-$tick=$ob->GetTickCount();
-$in2= getc PORT;
-$tock=$ob->GetTickCount();
-
-is_bad (defined $in2);				# 97
-$err=$tock - $tick;
-is_bad ($err > 50);				# 98
-print "<0> elapsed time=$err\n";
-
-## 99 - 103: Bad Port (new + quiet)
-
-$file = "/dev/badport";
-my $ob2;
-is_bad ($ob2 = Device::SerialPort->new ($file));	# 99
-is_bad (defined $ob2);					# 100
-is_zero ($ob2 = Device::SerialPort->new ($file, 1));	# 101
-is_bad ($ob2 = Device::SerialPort->new ($file, 0));	# 102
-is_bad (defined $ob2);					# 103
+$tock=$ob->get_tick_count;
 
 if ($naptime) {
     print "++++ page break\n";
     sleep $naptime;
 }
 
-## 104 - 119: Output bits and pulses
+is_zero ($in);					# 101
+is_ok ($in2 eq "");				# 102
+
+$err=$tock - $tick;
+is_bad (($err < 475) or ($err > 585));		# 103
+print "<500> elapsed time=$err\n";
+
+is_ok (0 == $ob->read_char_time(0));		# 104
+$tick=$ob->get_tick_count;
+$in2= getc PORT;
+$tock=$ob->get_tick_count;
+
+is_bad (defined $in2);				# 105
+$err=$tock - $tick;
+is_bad (($err < 275) or ($err > 365));		# 106
+print "<300> elapsed time=$err\n";
+
+is_ok (0 == $ob->read_const_time(0));		# 107
+$tick=$ob->get_tick_count;
+$in2= getc PORT;
+$tock=$ob->get_tick_count;
+
+is_bad (defined $in2);				# 108
+$err=$tock - $tick;
+is_bad ($err > 50);				# 109
+print "<0> elapsed time=$err\n";
+
+## 110 - 114: Bad Port (new + quiet)
+
+$file = "/dev/badport";
+my $ob2;
+is_bad ($ob2 = Device::SerialPort->new ($file));	# 110
+is_bad (defined $ob2);					# 111
+is_zero ($ob2 = Device::SerialPort->new ($file, 1));	# 112
+is_bad ($ob2 = Device::SerialPort->new ($file, 0));	# 113
+is_bad (defined $ob2);					# 114
+
+if ($naptime) {
+    print "++++ page break\n";
+    sleep $naptime;
+}
+
+## 115 - 130: Output bits and pulses
 
 if ($ob->can_ioctl) {
-    is_ok ($ob->dtr_active(0));			# 104
-    $tick=$ob->GetTickCount();
-    is_ok ($ob->pulse_dtr_on(100));		# 105
-    $tock=$ob->GetTickCount();
+    is_ok ($ob->dtr_active(0));			# 115
+    $tick=$ob->get_tick_count;
+    is_ok ($ob->pulse_dtr_on(100));		# 116
+    $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 180) or ($err > 240));	# 106
+    is_bad (($err < 180) or ($err > 265));	# 117
     print "<200> elapsed time=$err\n";
     
-    is_ok ($ob->dtr_active(1));			# 107
-    $tick=$ob->GetTickCount();
-    is_ok ($ob->pulse_dtr_off(200));		# 108
-    $tock=$ob->GetTickCount();
+    is_ok ($ob->dtr_active(1));			# 118
+    $tick=$ob->get_tick_count;
+    is_ok ($ob->pulse_dtr_off(200));		# 119
+    $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 370) or ($err > 450));	# 109
+    is_bad (($err < 370) or ($err > 485));	# 120
     print "<400> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 110
-    $tick=$ob->GetTickCount();
-    is_ok ($ob->pulse_rts_on(150));		# 111
-    $tock=$ob->GetTickCount();
+    is_ok ($ob->rts_active(0));			# 121
+    $tick=$ob->get_tick_count;
+    is_ok ($ob->pulse_rts_on(150));		# 122
+    $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 275) or ($err > 345));	# 112
+    is_bad (($err < 275) or ($err > 365));	# 123
     print "<300> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(1));			# 113
-    $tick=$ob->GetTickCount();
-    is_ok ($ob->pulse_rts_on(50));		# 114
-    $tock=$ob->GetTickCount();
+    is_ok ($ob->rts_active(1));			# 124
+    $tick=$ob->get_tick_count;
+    is_ok ($ob->pulse_rts_on(50));		# 125
+    $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 80) or ($err > 130));	# 115
+    is_bad (($err < 80) or ($err > 145));	# 126
     print "<100> elapsed time=$err\n";
     
-    is_ok ($ob->rts_active(0));			# 116
-    is_ok ($ob->dtr_active(0));			# 117
+    is_ok ($ob->rts_active(0));			# 127
+    is_ok ($ob->dtr_active(0));			# 128
 }
 else {
     print "bypassing ioctl tests\n";
-    while ($tc < 117.1) { is_ok (1); }		# 104-117
+    while ($tc < 128.1) { is_ok (1); }		# 115-128
+	# test number must change to match preceeding loop
 }
 
-$tick=$ob->GetTickCount();
-is_ok ($ob->pulse_break_on(250));		# 118
-$tock=$ob->GetTickCount();
+$tick=$ob->get_tick_count;
+is_ok ($ob->pulse_break_on(250));		# 129
+$tock=$ob->get_tick_count;
 $err=$tock - $tick;
-is_bad (($err < 300) or ($err > 900));		# 119
+is_bad (($err < 235) or ($err > 900));		# 130
 print "<500> elapsed time=$err\n";
 
     # destructor = CLOSE method
 if ( $] < 5.005 ) {
-    is_ok($ob->close);				# 120
+    is_ok($ob->close);				# 131
 }
 else {
-    is_ok(close PORT);				# 120
+    is_ok(close PORT);				# 131
 }
 
     # destructor = DESTROY method

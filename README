@@ -1,5 +1,5 @@
 Device::SerialPort
-VERSION=0.05, 28 July 1999
+VERSION=0.06, 13 August 1999
 
 Hello Serial Port users:
 
@@ -15,6 +15,14 @@ functions implemented using POSIX calls. While most of the testing has
 occurred on linux, the package should work on other POSIX-compliant
 Operating Systems.
 
+This is a MAJOR release. Most of the functions from Win32::SerialPort
+are now available. Almost all the demos and examples work with minimal
+modifications. Many of the methods are new with this release, so expect
+a few bugs and consider everything experimental. But the intent is to
+"clone" the corresponding features of the Win32::SerialPort module
+whenever practical - see the documentation for that module as well as
+this one for details.
+
 There are a small number of ioctl calls to handle the RTS and DTR
 outputs. Those require (from more or less traditional locations) the
 outputs from "h2ph" for ioctl.h and related files. If the module does
@@ -28,12 +36,8 @@ them and sets "can_ioctl" false.
 This module does not require a compiler or use XS. Since everything is
 (convoluted but still pure) perl, you can fix flaws and change limits
 if required. But please file a bug report if you do. I have tested with
-Perl 5.005_02 on Redhat 5.2. 
-
-This is the second alpha release. Most features are still experimental in
-implementation. But the intent is to "clone" the corresponding features
-of the Win32::SerialPort module whenever practical - see the documentation
-for that module as well as this one for details.
+Perl 5.005_02 on Redhat 5.2. Some testing has occurred on AIX and Solaris
+as well.  This is the fourth alpha release.
 
 COMPATIBILITY NOTES:
 
@@ -41,10 +45,10 @@ COMPATIBILITY NOTES:
    just SerialPort.pm. The examples in alpha version 0.02 (limited
    release only) work fine when the Namespace is updated.
 
-2. The Tied FileHandle support will works fully on 5.005, mostly on 5.004,
+2. The Tied FileHandle support works fully on 5.005, mostly on 5.004,
    and essentially NOT on 5.003. This is due to the level of support
    in the underlying Perl - not to the module implementation. The module
-   supports all tie methods except READLINE and READ currently.
+   supports all tie methods and even handles output_separators.
 
 3. Unlike Win32::SerialPort, this distribution uses Makefile.PL and the
    "standard" install sequence for CPAN modules:
@@ -52,6 +56,13 @@ COMPATIBILITY NOTES:
 	make
 	make test
 	make install
+
+4. The GetTickCount method has been renamed to get_tick_count to conform
+   to normal naming style. A corresponding method has been added to the
+   Win32 version to facilitate portability.
+
+5. The save, start, and restart methods are now supported. The format of
+   the configuration_file is not identical to the Win32 one.
 
 See the NOTES and KNOWN LIMITATIONS in the SerialPort documentation. The
 ".pod" is embedded in the ".pm". The comments on "-w" and "use strict"
@@ -72,16 +83,25 @@ FILES:
     t			- test directory
     t/Altport.pm	- stub for inheritance test
     t/test1.t		- RUN ME FIRST, basic tests
+    t/test2.t		- tests restarting_a_configuration and timeouts
     t/test3.t		- Inheritance and export version of test1.t
+    t/test4.t		- Inheritance version of test2.t and "restart"
 
     eg/demo1.plx	- talks to a "really dumb" terminal
     eg/demo2.plx	- "poor man's" readline and chatV
+    eg/demo3.plx	- looks like a setup menu - but only looks :-(
     eg/demo4.plx	- simplest setup: "new", "required param"
+    eg/demo5.plx	- "waitfor" and "nextline" using lookfor
+    eg/demo6.plx	- basic tied FileHandle operations, record separators
+    eg/demo7.plx	- a Perl/Tk based terminal, event loop and callbacks
     eg/demo8.plx	- command line terminal emulator with Term::Readkey
     eq/options.plx	- post-install test that prints available options
     eg/example1.txt	- example from The Perl Journal #13 (minimal mods)
     eg/example2.txt	- example from The Perl Journal #13 (minimal mods)
     eg/example3.txt	- example from The Perl Journal #13 (minimal mods)
+    eg/example4.txt	- example from The Perl Journal #13 (minimal mods)
+    eg/example5.txt	- example from The Perl Journal #13 (minimal mods)
+    eg/example6.txt	- example from The Perl Journal #13 (minimal mods)
 
 INSTALL and TEST:
 
@@ -92,10 +112,10 @@ They may be someday. But not yet. You might need to be "root" for that.
 
 Run 'perl Makefile.PL' followed by 'make'. This will create install files
 and directories. Run 'make test' with nothing connected to "/dev/ttyS0".
-This will run the tests automatically. You CAN NOT specify a different
-port to test in Version 0.5 via 'perl Makefile.PL PORT'. I'll try to
-fix that in the next release. But you CAN specify an alternate port with
-the Shell Variable "Makefile_Test_Port".
+This will run the tests and create a configuration_file. You can specify
+a different port to test via 'perl Makefile.PL PORT'. Makefile.PL creates
+"t/DefaultPort.pm". You can also specify an alternate port with the Shell
+Variable "Makefile_Test_Port".
 
 The Benchmark routines are used to generate reports. The test suite
 covers many of the module methods and sets the port for 9600 baud,
@@ -136,14 +156,33 @@ ask you to save the output of options.plx in a file and send it to me.
 You can specify a port name for options.plx on the command line
 (e.g. 'perl options.plx COM2').
 
+You can read (many of the important) settings with demo3.plx. If you
+give it a (valid) configuration file on the command line, it will open
+the port with those parameters - so you can test simple changes: see
+the parity example at the end of demo3.plx.
+
 Demo4.plx is a "minimum" script showing just the basics needed to get
 started.
+
+Demo5.plx demonstrates various uses of the lookfor routine including
+setups for "waitfor" and a primitive "readline". Try them out. The
+default "stty" settings work with a VT-100 style terminal. You may
+have to set the options by hand. Use any editor. Let me know if the
+descriptions in the documentation are useable. And if any more options
+are necessary.
+
+Demo6.plx demonstrates tied FileHandles. Perl 5.005 is recommended.
+It "requires" 5.004. It implements timeouts on all user inputs - so
+you can run it "hands-off" to see what happens.
+
+Demo7.plx uses Tk to create a terminal emulator. Its included to show
+polling and callbacks using an event loop.
 
 Demo8.plx is a simple command-line terminal emulator contributed by
 Andrej Mikus.
 
 The Perl Journal #13 included an article on Controlling a Modem with
-Win32::SerialPort. Slightly revised versions of the first 3 Examples
+Win32::SerialPort. Slightly revised versions of the first 6 Examples
 from the article are included in the "eg" subdirectory.
 
 Please tell me what does and what doesn't work. The module has proven

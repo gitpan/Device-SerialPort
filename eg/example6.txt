@@ -1,0 +1,24 @@
+#!/usr/bin/perl -w
+
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
+
+use strict;
+use Device::SerialPort 0.055;
+
+my $ob = Device::SerialPort->start ("tpj4.cfg") || die;
+
+$ob->write("ATE0X4\r");
+## $ob->read_interval(100);
+$ob->read_const_time(1000);
+my ($count, $result) = $ob->read(20);
+print "count = $count,  result = $result\n";
+
+## $ob->read_interval(0);
+$ob->read_const_time(5000);
+$ob->write("AT&V\r");
+($count, $result) = $ob->read(40);
+print "count = $count,  result = $result\n";
+($count, $result) = $ob->read(4000);
+print "count = $count,  result = $result\n";
+
+undef $ob;

@@ -1,0 +1,25 @@
+#!/usr/bin/perl -w
+
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
+
+use strict;
+use Device::SerialPort 0.055;
+
+my $ob = Device::SerialPort->new ('/dev/modem') || die;
+
+$ob->user_msg(1);	# misc. warnings
+$ob->error_msg(1);	# hardware and data errors
+
+$ob->baudrate(38400);
+$ob->parity("none");
+## $ob->parity_enable(1);   # for any parity except "none"
+$ob->databits(8);
+$ob->stopbits(1);
+$ob->handshake('rts');
+
+$ob->write_settings;
+$ob->save("tpj4.cfg");
+
+print "wrote configuration file tpj4.cfg\n";
+
+undef $ob;

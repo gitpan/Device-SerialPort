@@ -2,9 +2,9 @@ package AltPort;
 # Inheritance test for test3.t and test4.t only
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.05';
+$VERSION = '0.06';
 require Exporter;
-use Device::SerialPort qw( :PARAM 0.05 );
+use Device::SerialPort qw( :PARAM 0.06 );
 @ISA = qw( Exporter Device::SerialPort );
 @EXPORT= qw();
 @EXPORT_OK= @Device::SerialPort::EXPORT_OK;

@@ -40,3 +40,18 @@ Revision history for Perl extension Device::SerialPort.
 	- Add error and sanity checking to xxx_active and pulse_xxx methods
 	- Document $quiet option for new method
 	- Add preliminary lockfile support
+
+0.051 Tue Aug 03 10:12:14 1999
+	- test?.t changes for Sun testing
+
+0.055 Sat Aug 07 14:13:48 1999
+	- interim test release for configuration files, defaults, bug fixes
+	- added tests, demos, and examples
+
+0.06 Fri Aug 07 17:49:40 1999
+	- ported demos 5,6,7 from Win32
+	- rename GetTickCount method to get_tick_count
+	- add stty_xxx shortcut methods
+	- add lookfor, streamline, are_match, READLINE and related methods
+	- add output_record and output_field separator support
+	- add return values to purge_xx and write_drain

@@ -1,0 +1,23 @@
+#!/usr/bin/perl -w
+
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
+
+use strict;
+use Device::SerialPort 0.055;
+
+my $ob = Device::SerialPort->start ("tpj4.cfg") || die;
+
+my $baud = $ob->baudrate;
+print "baud from configuration: $baud\n";
+
+$ob->write("ATE0X4\r");
+sleep 1;
+my $result = $ob->input;
+print "result = $result\n";
+
+$ob->write("AT&V\r");
+sleep 2;
+$result = $ob->input;
+print "result = $result\n";
+
+undef $ob;
