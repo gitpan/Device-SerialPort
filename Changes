@@ -30,3 +30,13 @@ Revision history for Perl extension Device::SerialPort.
 	- Add partial tied FileHandle support
 	- Documentation improvements
 	- Ported some of the Win32::SerialPort examples and demos
+
+0.05  Wed Jul 28 23:53:38 1999
+	- now uses standard MakeMaker install sequence with make
+	- alternate port for "make test" not yet supported
+	- delete lib subdirectories, make copies SerialPort.pm to blib
+	- AltPort.pm moved to t, "use lib" paths revised
+	- Add can_ioctl and allow operation if "asm/termios.ph" not found
+	- Add error and sanity checking to xxx_active and pulse_xxx methods
+	- Document $quiet option for new method
+	- Add preliminary lockfile support

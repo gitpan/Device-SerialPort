@@ -1,9 +1,9 @@
 Changes
+Device-SerialPort.html
 MANIFEST
 Makefile.PL
-AltPort.pm
-Install.PL
 README
+SerialPort.pm
 eg/demo1.plx
 eg/demo2.plx
 eg/demo4.plx
@@ -12,7 +12,6 @@ eg/example1.txt
 eg/example2.txt
 eg/example3.txt
 eg/options.plx
+t/AltPort.pm
 t/test1.t
 t/test3.t
-lib/Device/SerialPort.pm 
-SerialPort.html 

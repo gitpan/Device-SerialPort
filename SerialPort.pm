@@ -4,26 +4,43 @@
 
 # Prototypes for ioctl constants do not match POSIX constants
 # so put them into implausible namespace and call them there
+
 package SerialJunk;
-require 'asm/termios.ph';
+
+use vars qw($ioctl_ok);
+eval { require 'asm/termios.ph'; };
+if ($@) {
+   $ioctl_ok = 0;
+##   print "error message: $@\n"; ## DEBUG ##
+}
+else {
+   $ioctl_ok = 1;
+}
 
 package Device::SerialPort;
 
 use POSIX qw(:termios_h);
 use IO::Handle;
 
-my $bitset = &SerialJunk::TIOCMBIS or die "no TIOCMBIS";
-my $bitclear = &SerialJunk::TIOCMBIC or die "no TIOCMBIC";
-my $rtsout = pack('L', &SerialJunk::TIOCM_RTS) or die "no TIOCM_RTS";
-my $dtrout = pack('L', &SerialJunk::TIOCM_DTR) or die "no TIOCM_DTR";
-## my $bothout = pack('L', &SerialJunk::TIOCM_RTS | &SerialJunk::TIOCM_DTR);
-
+use vars qw($bitset $bitclear $rtsout $dtrout);
+if ($SerialJunk::ioctl_ok) {
+    $bitset = &SerialJunk::TIOCMBIS;
+    $bitclear = &SerialJunk::TIOCMBIC;
+    $rtsout = pack('L', &SerialJunk::TIOCM_RTS);
+    $dtrout = pack('L', &SerialJunk::TIOCM_DTR);
+}
+else {
+    $bitset = 0;
+    $bitclear = 0;
+    $rtsout = pack('L', 0);
+    $dtrout = pack('L', 0);
+}
 
 use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.04';
+$VERSION = '0.05';
 
 require Exporter;
 
@@ -156,6 +173,35 @@ sub new {
                                 # 
     my $quiet = shift;
 
+    unless ($quiet or ($bitset && $bitclear && $rtsout && $dtrout) ) {
+       nocarp or warn "disabling ioctl methods - constants not found\n";
+    }
+
+    my $lockfile = shift;
+    if ($lockfile) {
+        $self->{LOCK} = $lockfile;
+	my $lockf = POSIX::open($self->{LOCK}, 
+				    &POSIX::O_WRONLY |
+				    &POSIX::O_CREAT |
+				    &POSIX::O_NOCTTY |
+				    &POSIX::O_EXCL);
+	unless (defined $lockf) {
+            unless ($quiet) {
+                nocarp or carp "can't open lockfile: $self->{LOCK}\n"; 
+            }
+            return 0 if ($quiet);
+	    return;
+	}
+	my $pid = "$$\n";
+	$ok = POSIX::write($lockf, $pid, length $pid);
+	my $ok2 = POSIX::close($lockf);
+	return unless ($ok && (defined $ok2));
+	sleep 2;	# wild guess for Version 0.05
+    }
+    else {
+        $self->{LOCK} = "";
+    }
+
     $self->{FD}= POSIX::open($self->{NAME}, 
 				    &POSIX::O_RDWR |
 				    &POSIX::O_NOCTTY |
@@ -167,6 +213,13 @@ sub new {
             nocarp or carp "can't open device: $self->{NAME}\n"; 
         }
         $self->{FD} = -1;
+        if ($self->{LOCK}) {
+	    $ok = unlink $self->{LOCK};
+	    unless ($ok or $quiet) {
+                nocarp or carp "can't remove lockfile: $self->{LOCK}\n"; 
+    	    }
+            $self->{LOCK} = "";
+        }
         return 0 if ($quiet);
 	return;
     }
@@ -278,6 +331,11 @@ sub can_total_timeout		{ return 1; } # currently
 sub binary			{ return 1; }
   
 sub reset_error			{ return 0; } # for compatibility
+
+sub can_ioctl {
+    return 0 unless ($bitset && $bitclear && $rtsout && $dtrout);
+    return 1;
+}
   
 sub handshake {
     my $self = shift;
@@ -591,7 +649,8 @@ sub parity_enable {
 }
 
 sub dtr_active {
-    return undef unless (@_ == 2);
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $dtrout);
     my $self = shift;
     my $onoff = shift;
     # returns ioctl result
@@ -604,7 +663,8 @@ sub dtr_active {
 }
 
 sub rts_active {
-    return undef unless (@_ == 2);
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
     my $onoff = shift;
     # returns ioctl result
@@ -617,6 +677,7 @@ sub rts_active {
 }
 
 sub pulse_break_on {
+    return unless (@_ == 2);
     my $self = shift;
     my $delay = (shift)/1000;
     my $length = 0;
@@ -627,49 +688,57 @@ sub pulse_break_on {
 }
 
 sub pulse_rts_on {
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
     my $delay = (shift)/1000;
-    $self->rts_active(1) or die "could not pulse rts on";
+    $self->rts_active(1) or warn "could not pulse rts on";
 ##    print "rts on\n"; ## DEBUG
     select (undef, undef, undef, $delay);
-    $self->rts_active(0) or die "could not restore from rts on";
-##    print "neither...\n"; ## DEBUG
+    $self->rts_active(0) or warn "could not restore from rts on";
+##    print "rts_off\n"; ## DEBUG
     select (undef, undef, undef, $delay);
     1;
 }
 
 sub pulse_dtr_on {
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $dtrout);
     my $self = shift;
     my $delay = (shift)/1000;
-    $self->dtr_active(1) or die "could not pulse dtr on";
+    $self->dtr_active(1) or warn "could not pulse dtr on";
 ##    print "dtr on\n"; ## DEBUG
     select (undef, undef, undef, $delay);
-    $self->dtr_active(0) or die "could not restore from dtr on";
-##    print "neither...\n"; ## DEBUG
+    $self->dtr_active(0) or warn "could not restore from dtr on";
+##    print "dtr_off\n"; ## DEBUG
     select (undef, undef, undef, $delay);
     1;
 }
 
 sub pulse_rts_off {
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $rtsout);
     my $self = shift;
     my $delay = (shift)/1000;
-    $self->rts_active(0) or die "could not pulse rts off";
+    $self->rts_active(0) or warn "could not pulse rts off";
 ##    print "rts off\n"; ## DEBUG
     select (undef, undef, undef, $delay);
-    $self->rts_active(1) or die "could not restore from rts off";
-##    print "both...\n"; ## DEBUG
+    $self->rts_active(1) or warn "could not restore from rts off";
+##    print "rts on\n"; ## DEBUG
     select (undef, undef, undef, $delay);
     1;
 }
 
 sub pulse_dtr_off {
+    return unless (@_ == 2);
+    return unless ($bitset && $bitclear && $dtrout);
     my $self = shift;
     my $delay = (shift)/1000;
-    $self->dtr_active(0) or die "could not pulse dtr off";
+    $self->dtr_active(0) or warn "could not pulse dtr off";
 ##    print "dtr off\n"; ## DEBUG
     select (undef, undef, undef, $delay);
-    $self->dtr_active(1) or die "could not restore from dtr off";
-##    print "both...\n"; ## DEBUG
+    $self->dtr_active(1) or warn "could not restore from dtr off";
+##    print "dtr on\n"; ## DEBUG
     select (undef, undef, undef, $delay);
     1;
 }
@@ -742,6 +811,14 @@ sub close {
 sub DESTROY {
     my $ok;
     my $self = shift;
+
+    if ($self->{LOCK}) {
+	$ok = unlink $self->{LOCK};
+	unless ($ok) {
+            nocarp or carp "can't remove lockfile: $self->{LOCK}\n"; 
+	}
+        $self->{LOCK} = "";
+    }
 
     return unless (defined $self->{NAME});
 
@@ -957,7 +1034,8 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
 =head2 Constructors
 
-  $PortObj = new Device::SerialPort ($PortName)
+       # $quiet and $lockfile are optional
+  $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
        || die "Can't open $PortName: $!\n";
 
        # not implemented yet
@@ -1047,6 +1125,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj->can_spec_char;		# 0 use stty
   $PortObj->can_interval_timeout;	# 1 currently
   $PortObj->can_total_timeout;		# 0 currently
+  $PortObj->can_ioctl;			# automatically detected by eval
   
 =head2 Operating Methods
 
@@ -1067,7 +1146,8 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 
       # controlling outputs from the port
   $PortObj->dtr_active(T);		# sends outputs direct to hardware
-  $PortObj->rts_active(Yes);		# returns status of ioctl call
+  $PortObj->rts_active(Yes);		# return status of ioctl call
+					# return undef on failure
 
   $PortObj->pulse_break_on($milliseconds); # off version is implausible
   $PortObj->pulse_rts_on($milliseconds);
@@ -1075,6 +1155,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj->pulse_dtr_on($milliseconds);
   $PortObj->pulse_dtr_off($milliseconds);
       # sets_bit, delays, resets_bit, delays
+      # returns undef if unsuccessful or ioctls not implemented
 
   $PortObj->read_const_time(100);	# const time for read (milliseconds)
   $PortObj->read_char_time(5);		# avg time between read char
@@ -1156,6 +1237,27 @@ hardware driver in the Operating System, they are all checked for
 validity by the methods that set them. The B<write_settings> method
 updates the port (and will return True under POSIX). Ports are opened
 for binary transfers. A separate C<binmode> is not needed.
+
+  $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
+       || die "Can't open $PortName: $!\n";
+
+There are two optional parameters for B<new>. Failure to open a port
+prints an error message to STDOUT by default. Since other applications
+can use the port, one source of failure is "port in use". There was
+originally no way to check this without getting a "fail message".
+Setting C<$quiet> disables this built-in message. It also returns 0
+instead of C<undef> if the port is unavailable (still FALSE, used for
+testing this condition - other faults may still return C<undef>).
+Use of C<$quiet> only applies to B<new>.
+
+The C<$lockfile> parameter has a related purpose. It will attempt to
+create a file (containing just the current process id) at the location
+specified. This file will be automatically deleted when the C<$PortObj>
+is no longer used (by DESTROY). You would usually request C<$lockfile>
+with C<$quiet> true to disable messages while attempting to obtain
+exclusive ownership of the port via the lock. Lockfiles are VERY preliminary
+in Version 0.05. I know of intermittent timing problems with uugetty when
+attempting to use a port also used for logins.
 
 The second constructor, B<start> is intended to simplify scripts which
 need a constant setup. It executes all the steps from B<new> to
@@ -1257,6 +1359,11 @@ BREAK pulse.
   $PortObj->pulse_dtr_on($milliseconds);
   $PortObj->pulse_dtr_off($milliseconds);
 
+In Version 0.05, these calls and the B<rts_active> and B<dtr_active> calls
+verify the parameters and any required I<ioctl constants>, and return C<undef>
+unless the call succeeds. You can use the B<can_ioctl> method to see if
+the required constants are available. On Version 0.04, the module would
+not load unless I<asm/termios.ph> was found at startup.
 
 =head2 Configuration and Capability Methods
 
@@ -1362,7 +1469,7 @@ Write timeouts and B<read_interval> timeouts are not currently supported.
 
 =head1 BUGS
 
-The module does not currently create or check lockfiles.
+The module does not reliably open with lockfiles. Experiment if you like.
 
 With all the I<currently unimplemented features>, we don't need any more.
 But there probably are some.
@@ -1473,6 +1580,6 @@ Perltoot.xxx - Tom (Christiansen)'s Object-Oriented Tutorial
 Copyright (C) 1999, Bill Birthisel. All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. 9 Apr 1999.
+under the same terms as Perl itself. 28 July 1999.
 
 =cut

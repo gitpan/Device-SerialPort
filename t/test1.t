@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib './lib','../lib'; # can run from here or distribution base
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
 
 # Before installation is performed this script should be runnable with
 # `perl test1.t time' which pauses `time' seconds (1..5) between pages
@@ -12,7 +12,7 @@ use lib './lib','../lib'; # can run from here or distribution base
 
 BEGIN { $| = 1; print "1..120\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Device::SerialPort 0.04;
+use Device::SerialPort 0.05;
 $loaded = 1;
 print "ok 1\n";
 
@@ -385,7 +385,7 @@ $err=$tock - $tick;
 is_bad ($err > 50);				# 98
 print "<0> elapsed time=$err\n";
 
-## 99 - 104: Bad Port (new + quiet)
+## 99 - 103: Bad Port (new + quiet)
 
 $file = "/dev/badport";
 my $ob2;
@@ -402,47 +402,53 @@ if ($naptime) {
 
 ## 104 - 119: Output bits and pulses
 
-is_ok ($ob->dtr_active(0));			# 104
-$tick=$ob->GetTickCount();
-is_ok ($ob->pulse_dtr_on(100));			# 105
-$tock=$ob->GetTickCount();
-$err=$tock - $tick;
-is_bad (($err < 180) or ($err > 240));		# 106
-print "<200> elapsed time=$err\n";
+if ($ob->can_ioctl) {
+    is_ok ($ob->dtr_active(0));			# 104
+    $tick=$ob->GetTickCount();
+    is_ok ($ob->pulse_dtr_on(100));		# 105
+    $tock=$ob->GetTickCount();
+    $err=$tock - $tick;
+    is_bad (($err < 180) or ($err > 240));	# 106
+    print "<200> elapsed time=$err\n";
+    
+    is_ok ($ob->dtr_active(1));			# 107
+    $tick=$ob->GetTickCount();
+    is_ok ($ob->pulse_dtr_off(200));		# 108
+    $tock=$ob->GetTickCount();
+    $err=$tock - $tick;
+    is_bad (($err < 370) or ($err > 450));	# 109
+    print "<400> elapsed time=$err\n";
+    
+    is_ok ($ob->rts_active(0));			# 110
+    $tick=$ob->GetTickCount();
+    is_ok ($ob->pulse_rts_on(150));		# 111
+    $tock=$ob->GetTickCount();
+    $err=$tock - $tick;
+    is_bad (($err < 275) or ($err > 345));	# 112
+    print "<300> elapsed time=$err\n";
+    
+    is_ok ($ob->rts_active(1));			# 113
+    $tick=$ob->GetTickCount();
+    is_ok ($ob->pulse_rts_on(50));		# 114
+    $tock=$ob->GetTickCount();
+    $err=$tock - $tick;
+    is_bad (($err < 80) or ($err > 130));	# 115
+    print "<100> elapsed time=$err\n";
+    
+    is_ok ($ob->rts_active(0));			# 116
+    is_ok ($ob->dtr_active(0));			# 117
+}
+else {
+    print "bypassing ioctl tests\n";
+    while ($tc < 117.1) { is_ok (1); }		# 104-117
+}
 
-is_ok ($ob->dtr_active(1));			# 107
 $tick=$ob->GetTickCount();
-is_ok ($ob->pulse_dtr_off(200));		# 108
+is_ok ($ob->pulse_break_on(250));		# 118
 $tock=$ob->GetTickCount();
 $err=$tock - $tick;
-is_bad (($err < 370) or ($err > 450));		# 109
-print "<400> elapsed time=$err\n";
-
-is_ok ($ob->rts_active(0));			# 110
-$tick=$ob->GetTickCount();
-is_ok ($ob->pulse_rts_on(150));			# 111
-$tock=$ob->GetTickCount();
-$err=$tock - $tick;
-is_bad (($err < 275) or ($err > 345));		# 112
-print "<300> elapsed time=$err\n";
-
-is_ok ($ob->rts_active(1));			# 113
-$tick=$ob->GetTickCount();
-is_ok ($ob->pulse_rts_on(50));			# 114
-$tock=$ob->GetTickCount();
-$err=$tock - $tick;
-is_bad (($err < 80) or ($err > 130));		# 115
-print "<100> elapsed time=$err\n";
-
-$tick=$ob->GetTickCount();
-is_ok ($ob->pulse_break_on(250));		# 116
-$tock=$ob->GetTickCount();
-$err=$tock - $tick;
-is_bad (($err < 300) or ($err > 900));		# 117
+is_bad (($err < 300) or ($err > 900));		# 119
 print "<500> elapsed time=$err\n";
-
-is_ok ($ob->rts_active(0));			# 118
-is_ok ($ob->dtr_active(0));			# 119
 
     # destructor = CLOSE method
 if ( $] < 5.005 ) {

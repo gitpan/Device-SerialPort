@@ -67,7 +67,8 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 <HR>
 <H2><A NAME="Constructors">Constructors</A></H2>
 <P>
-<PRE>  $PortObj = new Device::SerialPort ($PortName)
+<PRE>       # $quiet and $lockfile are optional
+  $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
        || die &quot;Can't open $PortName: $!\n&quot;;
 </PRE>
 <P>
@@ -174,6 +175,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj-&gt;can_spec_char;              # 0 use stty
   $PortObj-&gt;can_interval_timeout;       # 1 currently
   $PortObj-&gt;can_total_timeout;          # 0 currently
+  $PortObj-&gt;can_ioctl;                  # automatically detected by eval
   
 =head2 Operating Methods
 </PRE>
@@ -199,7 +201,8 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
 <P>
 <PRE>      # controlling outputs from the port
   $PortObj-&gt;dtr_active(T);              # sends outputs direct to hardware
-  $PortObj-&gt;rts_active(Yes);            # returns status of ioctl call
+  $PortObj-&gt;rts_active(Yes);            # return status of ioctl call
+                                        # return undef on failure
 </PRE>
 <P>
 <PRE>  $PortObj-&gt;pulse_break_on($milliseconds); # off version is implausible
@@ -208,6 +211,7 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj-&gt;pulse_dtr_on($milliseconds);
   $PortObj-&gt;pulse_dtr_off($milliseconds);
       # sets_bit, delays, resets_bit, delays
+      # returns undef if unsuccessful or ioctls not implemented
 </PRE>
 <P>
 <PRE>  $PortObj-&gt;read_const_time(100);       # const time for read (milliseconds)
@@ -305,6 +309,27 @@ yet ready for read/write access. First, the desired <EM>parameter settings</EM> 
 hardware driver in the Operating System, they are all checked for validity
 by the methods that set them. The <STRONG>write_settings</STRONG> method updates the port (and will return True under POSIX). Ports are
 opened for binary transfers. A separate <CODE>binmode</CODE> is not needed.
+
+<P>
+<PRE>  $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
+       || die &quot;Can't open $PortName: $!\n&quot;;
+</PRE>
+<P>
+There are two optional parameters for <STRONG>new</STRONG>. Failure to open a port prints an error message to STDOUT by default.
+Since other applications can use the port, one source of failure is ``port
+in use''. There was originally no way to check this without getting a
+``fail message''. Setting <CODE>$quiet</CODE> disables this built-in message. It also returns 0 instead of <CODE>undef</CODE> if the port is unavailable (still FALSE, used for testing this condition -
+other faults may still return <CODE>undef</CODE>). Use of <CODE>$quiet</CODE> only applies to <STRONG>new</STRONG>.
+
+<P>
+The <CODE>$lockfile</CODE> parameter has a related purpose. It will attempt to create a file
+(containing just the current process id) at the location specified. This
+file will be automatically deleted when the <CODE>$PortObj</CODE>
+is no longer used (by DESTROY). You would usually request <CODE>$lockfile</CODE>
+with <CODE>$quiet</CODE> true to disable messages while attempting to obtain exclusive ownership of
+the port via the lock. Lockfiles are VERY preliminary in Version 0.05. I
+know of intermittent timing problems with uugetty when attempting to use a
+port also used for logins.
 
 <P>
 The second constructor, <STRONG>start</STRONG> is intended to simplify scripts which need a constant setup. It executes
@@ -413,6 +438,11 @@ is handled by <EM>POSIX::tcsendbreak(0)</EM>, which sends a 250-500 millisecond 
   $PortObj-&gt;pulse_dtr_on($milliseconds);
   $PortObj-&gt;pulse_dtr_off($milliseconds);
 </PRE>
+<P>
+In Version 0.05, these calls and the <STRONG>rts_active</STRONG> and <STRONG>dtr_active</STRONG> calls verify the parameters and any required <EM>ioctl constants</EM>, and return <CODE>undef</CODE>
+unless the call succeeds. You can use the <STRONG>can_ioctl</STRONG> method to see if the required constants are available. On Version 0.04, the
+module would not load unless <EM>asm/termios.ph</EM> was found at startup.
+
 <P>
 <HR>
 <H2><A NAME="Configuration_and_Capability_Met">Configuration and Capability Methods</A></H2>
@@ -527,7 +557,7 @@ Write timeouts and <STRONG>read_interval</STRONG> timeouts are not currently sup
 <HR>
 <H1><A NAME="BUGS">BUGS</A></H1>
 <P>
-The module does not currently create or check lockfiles.
+The module does not reliably open with lockfiles. Experiment if you like.
 
 <P>
 With all the <EM>currently unimplemented features</EM>, we don't need any more. But there probably are some.
@@ -662,7 +692,7 @@ Copyright (C) 1999, Bill Birthisel. All rights reserved.
 
 <P>
 This module is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself. 9 Apr 1999.
+under the same terms as Perl itself. 28 July 1999.
 
 </BODY>
 

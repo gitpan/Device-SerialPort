@@ -6,8 +6,8 @@
 # no local echo at either end
 #
 
-use lib './lib','../lib'; # can run from here or distribution base
-use Device::SerialPort 0.04;
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
+use Device::SerialPort 0.05;
 use Term::ReadKey;
 
 use strict;

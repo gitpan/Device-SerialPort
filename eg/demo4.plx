@@ -1,12 +1,12 @@
 #! perl -w
 
-use lib './lib','../lib'; # can run from here or distribution base
+use lib './blib/lib','../blib/lib'; # can run from here or distribution base
 
 ######################### We start with some black magic to print on failure.
 
 BEGIN { $| = 1; print "demo4.plx "; }
 END {print "not ok\n" unless $loaded;}
-use Device::SerialPort 0.04;
+use Device::SerialPort 0.05;
 $loaded = 1;
 print "ok\n";
 
