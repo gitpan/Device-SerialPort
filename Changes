@@ -71,4 +71,12 @@ Revision history for Perl extension Device::SerialPort.
 	- got Linux working 100% (even with tests)
 	- got Solaris working 100% (even with tests)
 
+0.11 Tue Jul 17 23:32:55 CDT 2001 (Kees)
+	- patch from James Mitchell <jmitchel@lucent.com> to allow TIEHANDLE
+	  to use a device port in addition to a config file
+	- updated documentation to reflect above patch
+	- added FILENO function, per James Mitchell's suggestion
+	- detecting vmin settings for broken Solaris tools.
+	- added "modemtest"
+
 

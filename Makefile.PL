@@ -64,16 +64,22 @@ foreach $loc (@LOCATIONS) {
 	print "(TIOCMGET) " if ($VERBOSE);
 	$benefit=1;
    } 
-   if (!defined($got{'dtr'}) && 
-        (defined(&SerialJunk::TIOCSDTR) || defined(&SerialJunk::TIOCM_DTR))) {
-	$got{'dtr'}=1;
-	if (defined(&SerialJunk::TIOCSDTR)) {
-		print "(TIOCSDTR) " if ($VERBOSE);
-	} else {
-		print "(TIOCM_DTR) " if ($VERBOSE);
-	}
-	$benefit=1;
-   } 
+   if (defined(&SerialJunk::TIOCSDTR)) {
+        print "(TIOCSDTR) " if ($VERBOSE);
+        $got{'dtrset'}=1;
+        $benefit=1;
+   }
+   if (defined(&SerialJunk::TIOCCDTR)) {
+        print "(TIOCCDTR) " if ($VERBOSE);
+        $got{'dtrclear'}=1;
+        $benefit=1;
+   }
+   if (defined(&SerialJunk::TIOCM_DTR)) {
+        print "(TIOCM_DTR) " if ($VERBOSE);
+        $got{'dtr'}=1;
+        $benefit=1;
+   }
+
    if ($benefit == 1) {
    	push(@using, $loc);
 	print "useful\n" if ($VERBOSE);
@@ -81,7 +87,8 @@ foreach $loc (@LOCATIONS) {
    else {
 	print "not useful\n" if ($VERBOSE);
    }
-   if ($got{'dtr'} && $got{'hardflow'} && $got{'TIOCMBIS'} &&
+   if ((($got{'dtrset'} && $got{'dtrclear'}) || $got{'dtr'}) &&
+	$got{'hardflow'} && $got{'TIOCMBIS'} &&
 	$got{'TIOCMBIC'} && $got{'TIOCMGET'}) {
                 $ioctl_ok = 1;
                 print "\nNeeded '".
@@ -102,26 +109,31 @@ need to run:
 before the Perl *.ph files will work.\n";
 }
 
+print "\n";
 
 # First, we need to figure out a default serial port to use for
 # testing.
-my @SERIALS=( "/dev/ttyS0", "/dev/cua00", "/dev/term/a", "/dev/tty0" );
+print "Trying to find a serial port for testing...\n";
+my @SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1" );
 if (@ARGV) {
     @SERIALS=@ARGV;
 }
-
-print "Trying to find a serial port for testing...\n";
+else {
+	print "(use 'perl Makefile.PL <DEVICE>' to override this search)\n";
+}
 
 my $file=undef;
 my $test;
 foreach $test (@SERIALS) {
     print "\tchecking '$test' ... ";
     lstat($test);
-    if (-e $test) {
-        if (-l $test) {
+    if (-e _) {
+        if (-l _) {
 	    my $sunserial=readlink($test);
-	    if (-c $sunserial) {
-	        print "character device\n";
+	    $sunserial="/dev/$sunserial" unless ($sunserial =~ m#^/#);
+	    stat($sunserial);
+	    if (-c _) {
+	        print "link to character device\n";
 	        if ($sunserial =~ m#/devices/#) {
 	            # this is a sun serial device, check the type
 	            my @paths=split('/',$sunserial);
@@ -152,7 +164,7 @@ foreach $test (@SERIALS) {
 	}
 	# if we get here, it's either not a link, or not a link to a sun dev
 	stat($test);
-	if (-c $test) {
+	if (-c _) {
 	    print "character device\n";
 	    $file=$test;
 	    last;
@@ -178,6 +190,12 @@ EOF
 
 close DEFAULT;
 
+print "\n";
+print "PLEASE NOTE:\n";
+print "If you run 'make test', you must make sure that nothing is plugged\n";
+print "into '$file'!\n";
+
+print "\nYou're ready to run 'make' now...\n";
 
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
@@ -224,13 +242,18 @@ sub CheckEtcSystem {
 	}
     }
     if ($found != 1) {
-	warn "\nYou don't have a '$setting' line in '/etc/system'.\n".
+	warn "\n***** WARNING *****\n".
+             "You don't have a '$setting' line in '/etc/system'.\n".
 	     "you might need to add:\n".
 	     "\tset $setting = 0\n".
              "to '/etc/system', or else Device::SerialPort's DTR functions\n".
-	     "will not work properly.\n";
+	     "will not work properly.\n".
+	     "\nHopefully, you'll be lucky (PCI? fully patched Solaris 8?)".
+	     "\nand you won't need to make this change.  See what 'make test' says.\n".
+	     "\n*** Please read the 'SOLARIS TROUBLE' section of the README\n";
     }
     else {
         print "\tOh good, your '/etc/system' contains '$setting = 0'!\n";
     }
 }
+

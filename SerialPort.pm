@@ -77,14 +77,19 @@ foreach $loc (@LOCATIONS) {
         print "(TIOCMGET) " if ($VERBOSE);
         $benefit=1;
    }
-   if (!defined($got{'dtr'}) &&
-        (defined(&SerialJunk::TIOCSDTR) || defined(&SerialJunk::TIOCM_DTR))) {
-        $got{'dtr'}=1;
-        if (defined(&SerialJunk::TIOCSDTR)) {
-                print "(TIOCSDTR) " if ($VERBOSE);
-        } else {
-                print "(TIOCM_DTR) " if ($VERBOSE);
-        }
+   if (defined(&SerialJunk::TIOCSDTR)) {
+        print "(TIOCSDTR) " if ($VERBOSE);
+        $got{'dtrset'}=1;
+        $benefit=1;
+   }
+   if (defined(&SerialJunk::TIOCCDTR)) {
+        print "(TIOCCDTR) " if ($VERBOSE);
+       	$got{'dtrclear'}=1;
+        $benefit=1;
+   }
+   if (defined(&SerialJunk::TIOCM_DTR)) {
+        print "(TIOCM_DTR) " if ($VERBOSE);
+       	$got{'dtr'}=1;
         $benefit=1;
    }
    if ($benefit == 1) {
@@ -94,7 +99,8 @@ foreach $loc (@LOCATIONS) {
    else {
         print "not useful\n" if ($VERBOSE);
    }
-   if ($got{'dtr'} && $got{'hardflow'} && $got{'TIOCMBIS'} &&
+   if ((($got{'dtrset'} && $got{'dtrclear'}) || $got{'dtr'}) &&
+	$got{'hardflow'} && $got{'TIOCMBIS'} &&
         $got{'TIOCMBIC'} && $got{'TIOCMGET'}) {
                 $ioctl_ok = 1;
                 print "\nNeeded '".
@@ -210,7 +216,7 @@ use Carp;
 use strict;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.10';
+$VERSION = '0.11';
 
 require Exporter;
 
@@ -372,8 +378,12 @@ sub new {
 
     my $item = 0;
 
+    my $nameOrConf = shift;
+    return start($class, $nameOrConf, @_) if (-f $nameOrConf && ! -c $nameOrConf );
 
-    $self->{NAME}     = shift;
+    $self->{NAME}     = $nameOrConf;
+
+
 
                                 # bbw change: 03/10/99
                                 #  - Add quiet option so we can do a 'test'
@@ -515,6 +525,11 @@ sub new {
     $self->{CFG_3}		= "none";
 
     bless ($self, $class);
+
+#	These might be a good idea
+#    $self->read_char_time(0); 	  # no time
+#    $self->read_const_time(100); # 10th of a second
+
     return $self;
 }
 
@@ -1287,6 +1302,9 @@ sub read_const_time {
     my $self = shift;
     if (@_) {
 	$self->{RCONST} = (shift)/1000; # milliseconds -> select_time
+	$self->{"C_VTIME"} = $self->{RCONST} * 10000; # wants tenths of sec
+	$self->{"C_VMIN"} = 0;
+	write_settings($self);
     }
     return $self->{RCONST}*1000;
 }
@@ -1340,10 +1358,11 @@ sub read_vmin {
     my $ok     = 0;
     return unless ($wanted > 0);
 
-    if ($self->{"C_VMIN"} != $wanted) {
-	$self->{"C_VMIN"} = $wanted;
-        write_settings($self);
-    }
+#	This appears dangerous under Solaris
+#    if ($self->{"C_VMIN"} != $wanted) {
+#	$self->{"C_VMIN"} = $wanted;
+#        write_settings($self);
+#    }
     my $rin = "";
     vec($rin, $self->{FD}, 1) = 1;
     my $ein = $rin;
@@ -1354,16 +1373,25 @@ sub read_vmin {
     my $tout;
     my $ready = select($rout=$rin, $wout=undef, $eout=$ein, $tout=$tin);
 
-    my $got = POSIX::read ($self->{FD}, $result, $wanted);
+    my $got=0;
+    #my $got = POSIX::read ($self->{FD}, $result, $wanted);
 
-    unless (defined $got) {
-##	$got = -1;	## DEBUG
-	return (0,"") if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
-	return (0,"") if (!$ready and (0 == $ok));
-		# at least Solaris acts like eof() in this case
-	carp "Error #$ok in Device::SerialPort::read";
-	return;
+# added..
+    if ($ready>0) {
+        $got = POSIX::read ($self->{FD}, $result, $wanted);
+# end
+
+        unless (defined $got) {
+##   	    $got = -1;	## DEBUG
+	    return (0,"") if (&POSIX::EAGAIN == ($ok = POSIX::errno()));
+	    return (0,"") if (!$ready and (0 == $ok));
+		    # at least Solaris acts like eof() in this case
+	    carp "Error #$ok in Device::SerialPort::read";
+	    return;
+        }
+# added..
     }
+# end
 
     print "read_vmin=$got, ready=$ready, result=..$result..\n" if ($Babble);
     return ($got, $result);
@@ -1907,6 +1935,10 @@ sub dtr_active {
         $rc=ioctl($self->{HANDLE}, $on ? $bitset : $bitclear, $dtrout);
     }
     warn "dtr_active($on) ioctl: $!\n"    if (!$rc);
+
+    # ARG!  Solaris destroys termios settings after a DTR toggle!!
+    write_settings($self);
+
     return $rc;
 }
 
@@ -2074,9 +2106,8 @@ sub TIEHANDLE {
 
     return unless (@_);
 
-##    my $self = new($class, shift);
-    my $self = start($class, shift);
-    return $self;
+#    my $self = start($class, shift);
+    return new($class, @_);
 }
  
 # WRITE this, LIST
@@ -2258,6 +2289,14 @@ sub CLOSE {
     my $success = $self->close;
     if ($Babble) { printf "CLOSE result:%d\n", $success; }
     return $success;
+}
+
+# FILENO this
+#	This method will be called if we ever need the FD from the handle
+
+sub FILENO {
+    my $self = shift;
+    return $self->{FD};
 }
  
 1;  # so the require or use succeeds
@@ -2499,7 +2538,8 @@ identical to the one provided by the Win32::SerialPort module.
 
 =head2 Initialization
 
-The primary constructor is B<new> with a F<PortName> specified. This
+The primary constructor is B<new> with either a F<PortName>, or a
+F<Configuretion File> specified.  With a F<PortName>, this
 will open the port and create the object. The port is not yet ready
 for read/write access. First, the desired I<parameter settings> must
 be established. Since these are tuning constants for an underlying
@@ -2530,12 +2570,12 @@ in Version 0.07. They are intended for use with other applications. No
 attempt is made to resolve port aliases (/dev/modem == /dev/ttySx) or
 to deal with login processes such as getty and uugetty.
 
-The second constructor, B<start> is intended to simplify scripts which
-need a constant setup. It executes all the steps from B<new> to
-B<write_settings> based on a previously saved configuration. This
-constructor will return C<undef> on a bad configuration file or failure
-of a validity check. The returned object is ready for access. This is
-new and experimental for Version 0.055.
+Using a F<Configuration File> with B<new> or by using second constructor,
+B<start>, scripts can be simplified if they need a constant setup. It
+executes all the steps from B<new> to B<write_settings> based on a previously
+saved configuration. This constructor will return C<undef> on a bad
+configuration file or failure of a validity check. The returned object is
+ready for access. This is new and experimental for Version 0.055.
 
   $PortObj2 = start Device::SerialPort ($Configuration_File_Name)
        || die;

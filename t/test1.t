@@ -477,7 +477,11 @@ if ($ob->can_ioctl) {
     is_ok ($ob->pulse_dtr_on(100));		# 117
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 180) or ($err > 265));	# 118
+    if (!is_bad (($err < 180) or ($err > 265))) {# 118
+      if ($err > 265) {
+	warn "\n118: DTR toggle took too long.  Is this a Solaris serial port?\n\tPlease read the 'SOLARIS TROUBLE' section in the README\n\tto correct this problem.\n";
+      }
+    }
     print "<200> elapsed time=$err\n";
     
     is_ok ($ob->dtr_active(1));			# 119
@@ -485,7 +489,11 @@ if ($ob->can_ioctl) {
     is_ok ($ob->pulse_dtr_off(200));		# 120
     $tock=$ob->get_tick_count;
     $err=$tock - $tick;
-    is_bad (($err < 370) or ($err > 485));	# 121
+    if (!is_bad (($err < 370) or ($err > 485))) {# 121
+      if ($err > 485) {
+	warn "\n121: DTR toggle took too long.  Is this a Solaris serial port?\n\tPlease read the 'SOLARIS TROUBLE' section in the README\n\tto correct this problem.\n";
+      }
+    }
     print "<400> elapsed time=$err\n";
     
     if ($ob->can_rts()) {

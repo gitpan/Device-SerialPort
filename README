@@ -84,6 +84,8 @@ COMPATIBILITY NOTES:
 8. Right now, AIX will also fail some of the tests, including setting
    hardware flow control.  I'm working on fixing this.
 
+9. For Solaris, see the "SOLARIS TROUBLE" section below.
+
 See the NOTES and KNOWN LIMITATIONS in the SerialPort documentation. The
 ".pod" is embedded in the ".pm". The comments on "-w" and "use strict"
 are especially relevant when you start calling this module from your own
@@ -157,6 +159,53 @@ line. Delay may be set from 0 to 5 seconds.
 All tests are expected to pass - I would be very interested in hearing
 about failures ("not ok"). These tests should be run from a command
 prompt.
+
+SOLARIS TROUBLE:
+
+	  Some headers under Solaris don't behave very well, so I had
+          to define "__sparc" explicitly in Device::SerialPort.
+
+	  However, the big problem is with Solaris' handling of DTR. 
+          Depending on hardware, patchlevel, or something very mystical, if
+	  you have an "se" or "zs" serial port (run "modinfo | grep serial"
+	  to find out), you may need to correct this DTR bug by adding a
+	  line to your /etc/system file.  See below...
+
+          From the following URL:
+          http://www.stokely.com/unix.serial.port.resources/tutorials.html
+
+                DTR Delay Problems: By default, Suns have a three second
+                delay in toggling dtr. If your Sun has a zs serial port you
+                can set the variable default_dtrlow to control the number of
+                seconds of the delay. If the variable is set to zero, dtr
+                can be toggled many times a second. For example, in
+                /etc/system add the line "set zs:default_dtrlow = 1" to have
+                a 1 second delay.
+
+                If your workstation has an se serial port, the /etc/system
+                line should be "set se:se_default_dtrlow = 1". However, in
+                initial versions of the se driver, the delay was the value
+                of (se_default_dtrlow + 1) seconds. If you have this version
+                of the se driver, don't set the value to -1 in /etc/system or
+                the port will hang on open. If you need to toggle dtr quickly,
+                you can still set the value to -1 after the terminal is
+                opened by using adb to set the variable manually.
+
+                All this is Sun bugid 4230310, fixed by patch 105924-09 or
+                higher. The patch makes se_default_dtrlow behave like
+                default_dtrlow (i.e. setting se_default_dtrlow to 0 will allow
+                rapid toggling of dtr instead of once per second).
+
+          So, since I have zs serial ports on my Sun, I added the line:
+
+                set set zs:default_dtrlow = 0
+
+          so I could toggle the DTR rapidly.
+
+	  There are also problems with "tcdrain" never returning if there
+	  is no device attached to the serial port.  This has been worked
+	  around in the tests.
+
 
 DEMO PROGRAMS:
 

@@ -338,8 +338,10 @@ to the one provided by the Win32::SerialPort module.
 <HR>
 <H2><A NAME="Initialization">Initialization</A></H2>
 <P>
-The primary constructor is <STRONG>new</STRONG> with a <EM>PortName</EM> specified. This will open the port and create the object. The port is not
-yet ready for read/write access. First, the desired <EM>parameter settings</EM> must be established. Since these are tuning constants for an underlying
+The primary constructor is <STRONG>new</STRONG> with a <EM>PortName</EM>, or a
+<EM>Configuration File</EM> specified. With a <EM>PortName</EM>, this
+will open the port and create the object. The port is not yet
+ready for read/write access. First, the desired <EM>parameter settings</EM> must be established. Since these are tuning constants for an underlying
 hardware driver in the Operating System, they are all checked for validity
 by the methods that set them. The <STRONG>write_settings</STRONG> method updates the port (and will return True under POSIX). Ports are
 opened for binary transfers. A separate <CODE>binmode</CODE> is not needed.
@@ -367,9 +369,12 @@ port aliases (/dev/modem == /dev/ttySx) or to deal with login processes
 such as getty and uugetty.
 
 <P>
-The second constructor, <STRONG>start</STRONG> is intended to simplify scripts which need a constant setup. It executes
-all the steps from <STRONG>new</STRONG> to
-<STRONG>write_settings</STRONG> based on a previously saved configuration. This constructor will return <CODE>undef</CODE> on a bad configuration file or failure of a validity check. The returned
+Using a <EM>Configuration File</EM> with <STRONG>new</STRONG> or by using
+the second constructor, <STRONG>start</STRONG>, scripts can be simplified
+if they need a constant setup. It executes all the steps from
+<STRONG>new</STRONG> to <STRONG>write_settings</STRONG> based on a previously
+saved configuration. This constructor will return <CODE>undef</CODE> on a bad
+configuration file or failure of a validity check. The returned
 object is ready for access. This is new and experimental for Version 0.055.
 
 <P>
