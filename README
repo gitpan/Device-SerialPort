@@ -1,5 +1,5 @@
 Device::SerialPort
-VERSION=0.15, 2003 Jun 12
+VERSION=0.21, 2003 Jun 12
 
 Hello Serial Port users:
 
@@ -33,7 +33,7 @@ Version 0.09 adds further compatibility for other OSes, including AIX,
 Solaris, and OpenBSD.  Kees Cook is now maintaining this code for use
 with the Sendpage tool (http://sendpage.org/).  
 
-Version 0.15 uses XS to figure out the serial/modem bits needed to do
+Version 0.20 uses XS to figure out the serial/modem bits needed to do
 all the state fiddling.  Pay close attention to the "configure" output
 warnings to find out about possible broken things on your system.
 

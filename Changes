@@ -1,5 +1,8 @@
 Revision history for Perl extension Device::SerialPort.
 
+0.21 2003-06-12 (Kees)
+	- don't release files at midnight any more: forgot SerialPort.xs
+
 0.20 2003-06-12 (Kees)
         - fixed some truth bugs found by David Dyck <david.dyck@fluke.com>
 	- totally rewrote serial bit detection code to use "normal"

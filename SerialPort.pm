@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id:$
+# $Id: SerialPort.pm,v 1.15 2003/06/12 19:58:01 nemies Exp $
 #
 # Copyright (C) 2003 Kees Cook
 # kees@outflux.net, http://outflux.net/
@@ -32,7 +32,7 @@ use IO::Handle;
 use Carp;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.20';
+$VERSION = '0.21';
 
 require Exporter;
 

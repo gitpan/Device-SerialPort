@@ -3,5 +3,7 @@ Last updated Jun 12, 2003
 - fix AIX hardware flow control
 - fix lockfile support
 - spread POD docs out across the module
+- add "INSTALL"
+- add "COPYING"
 
 

@@ -7,6 +7,7 @@ Makefile.PL
 README
 TODO
 SerialPort.pm
+SerialPort.xs
 eg/any_os.plx
 eg/demo1.plx
 eg/demo2.plx
