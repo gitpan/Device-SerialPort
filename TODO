@@ -1,6 +1,8 @@
 
 High
+- document intr_count and wait_modemlines
 - spread POD docs out across the module
+- export the POSIX names too, MS_* is for optional porting compatibility
 - fix AIX hardware flow control (whats wrong with it?)
 
 Medium

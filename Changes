@@ -1,5 +1,11 @@
 Revision history for Perl extension Device::SerialPort.
 
+1.2.0 2004-11-09 (Kees)
+	* configure.ac: corrected version number here too.
+	* SerialPort.pm: added wait_modemlines, intr_count.
+	* SerialPort.xs, configure.ac: added TIOCMIWAIT, TIOCGICOUNT
+	* white space cleanups.
+
 1.0.2 2004-05-10 (Kees)
 	* Makefile.PL: added an OSX serial port default
 	* SerialPort.pm: patch for EOF handling by Arne Georg Gleditsch.

@@ -1,3 +1,9 @@
+libdevice-serialport-perl (1.2.0-1) unstable; urgency=low
+
+  * catching up to upstream version
+
+ -- Kees Cook <kees@outflux.net>  Mon,  9 Nov 2004 12:58:43 -0700
+
 libdevice-serialport-perl (1.0.0-1) unstable; urgency=low
 
   * catching up to upstream version
