@@ -1,10 +1,10 @@
-#!/usr/local/bin/perl
+#!/usr/bin/perl
 #
 # This tool is used to check how Device::SerialPort is behaving on
 # your machine.  It will list all the possible values for each function
 # as it runs.  Edit this tool to test various settings.
 #
-# $Id: modemtest,v 1.2 2003/06/12 08:49:29 nemies Exp $
+# $Id: modemtest,v 1.3 2003/06/13 01:01:59 nemies Exp $
 #
 # Copyright (C) 2000-2003 Kees Cook
 # kees@outflux.net, http://outflux.net/
@@ -25,70 +25,74 @@
 # http://www.gnu.org/copyleft/gpl.html
 
 use Device::SerialPort;
+use strict;
+
 print "Module loaded\n";
 
-# Edit this for your serial port.  (I was testing under Solaris...)
-$port=new Device::SerialPort("/dev/modem") || die "new: $!\n";
+# your serial port.
+my $fname=shift(@ARGV);
+$fname="/dev/modem" unless (defined($fname));
+my $port=new Device::SerialPort($fname) || die "new($fname): $!\n";
 print "Port open\n";
 
 # Are the ioctls loaded?
-$bool=$port->can_ioctl();
+my $bool=$port->can_ioctl();
 print "can ioctl: ",($bool ? "Yes" : "No"),"\n";
 if (!$bool) {
         die "The rest of this test is useless without ioctl methods.\n";
 }
 
 # Handshaking
-@handshakes=$port->handshake;
+my @handshakes=$port->handshake;
 print "Handshakes:\n";
 grep(print("\t$_\n"),sort(@handshakes));
-$handshake=$port->handshake("none");
+my $handshake=$port->handshake("none");
 print "Port handshake: $handshake\n";
 
 # Baud rate
-@bauds=$port->baudrate;
+my @bauds=$port->baudrate;
 print "Bauds:\n";
 grep(print("\t$_\n"),sort(@bauds));
-$baudrate=$port->baudrate("9600");
+my $baudrate=$port->baudrate("9600");
 print "Port baud: $baudrate\n";
 
 # Databits
-@databits=$port->databits;
+my @databits=$port->databits;
 print "Databits:\n";
 grep(print("\t$_\n"),sort(@databits));
-$databits=$port->databits(8);
+my $databits=$port->databits(8);
 print "Port databits: $databits\n";
 
 # Parity
-@parity=$port->parity;
+my @parity=$port->parity;
 print "Parity:\n";
 grep(print("\t$_\n"),sort(@parity));
-$parity=$port->parity("none");
+my $parity=$port->parity("none");
 print "Port parity: $parity\n";
 
 # Stopbits
-@stopbits=$port->stopbits;
+my @stopbits=$port->stopbits;
 print "Stopbits:\n";
 grep(print("\t$_\n"),sort(@stopbits));
-$stopbits=$port->stopbits(1);
+my $stopbits=$port->stopbits(1);
 print "Port stopbits: $stopbits\n";
 
 # Flip on DTR and RTS
-$dtr=$port->dtr_active(1);
-$rts=$port->rts_active(1);
+my $dtr=$port->dtr_active(1) ? "okay" : "failed";
+my $rts=$port->rts_active(1) ? "okay" : "failed";
 print "Port DTR ($dtr) and RTS ($rts) activated\n";
 
-$rts=$port->rts_active(0);
+$rts=$port->rts_active(0) ? "okay" : "failed";
 print "Flipped RTS to off ($rts) (pausing for 5 seconds)\n";
 sleep 5;
-$rts=$port->rts_active(1);
+$rts=$port->rts_active(1) ? "okay" : "failed";
 print "Flipped RTS to on ($rts)\n";
 
 # Flip OFF dtr
-$dtr=$port->dtr_active(0);
+$dtr=$port->dtr_active(0) ? "okay" : "failed";
 print "Flipped DTR to off ($dtr) (pausing for 5 seconds)\n";
 sleep 5;
-$dtr=$port->dtr_active(1);
+$dtr=$port->dtr_active(1) ? "okay" : "failed";
 print "Flipped DTR to on ($dtr)\n";
 
 # Just in case: reset our timing and buffers
@@ -97,57 +101,32 @@ $port->read_const_time(100);
 $port->read_char_time(5);
 
 # Read a chunk
-sleep 1;
-($count,$str)=$port->read(1);
-$cnt=$count;
-while ($count>0) {
-	($count,$got)=$port->read(1);
-	$str.=$got;
-	$cnt+=$count;
-}
-print "read: $cnt\n";
-print "-:$str:-\n";
+my ($count,$str,$got,$cnt);
+readchunk();
 
 # Write an INIT to the modem
 ($count)=$port->write("ATZ\r");
 print "written: $count\n";
 
-# Read a chunk
-sleep 1;
-($count,$str)=$port->read(1);
-$cnt=$count;
-while ($count>0) {
-	($count,$got)=$port->read(1);
-	$str.=$got;
-	$cnt+=$count;
-}
-print "read: $cnt\n";
-print "-:$str:-\n";
-
-# and another
-sleep 1;
-($count,$str)=$port->read(1);
-$cnt=$count;
-while ($count>0) {
-	($count,$got)=$port->read(1);
-	$str.=$got;
-	$cnt+=$count;
-}
-print "read: $cnt\n";
-print "-:$str:-\n";
-
-# and one more
-sleep 1;
-($count,$str)=$port->read(1);
-$cnt=$count;
-while ($count>0) {
-	($count,$got)=$port->read(1);
-	$str.=$got;
-	$cnt+=$count;
-}
-print "read: $cnt\n";
-print "-:$str:-\n";
+# Read a few chunks
+readchunk();
+readchunk();
 
 # close the port
 undef $port;
 print "Port closed\n";
+
+sub readchunk
+{
+	# read a chunk of data
+	sleep 1;
+	($count,$str)=$port->read(1);
+	$cnt=$count;
+	while ($count>0) {
+		($count,$got)=$port->read(1);
+		$str.=$got;
+		$cnt+=$count;
+	}
+	print "read: $cnt\n";
+	print "-:$str:-\n";
+}

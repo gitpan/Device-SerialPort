@@ -1,5 +1,5 @@
 Device::SerialPort
-VERSION=0.21, 2003 Jun 12
+VERSION=0.22, 2003 Jun 12
 
 Hello Serial Port users:
 
@@ -78,44 +78,48 @@ me play with his OpenBSD box and watching DTR lights for me.
 
 FILES:
 
-    Changes		- for history lovers
-    Makefile.PL		- the "starting point" for traditional reasons
-    configure           - used to find the correct headers for SerialPort.xs
-    config.h.in         - used to build config.h, used by SerialPort.xs
-    MANIFEST		- distribution file list
-    README		- this file
-    SerialPort.pm	- the reason you're reading this
-    SerialPort.xs       - the C code to get all the serial bits from .h files
-    modemtest           - quick tool for checking on serial port
-    show-tiocm.c        - simple C tool to report TIOCM* hacks
+ README			- this file
+ INSTALL                - bare minimum instructions for installing
+ COPYING                - software license
+ Changes		- for history lovers
+ Makefile.PL		- the "starting point" for traditional reasons
+ configure		- used to find the correct headers for SerialPort.xs
+ config.h.in		- used to build config.h, used by SerialPort.xs
+ MANIFEST		- distribution file list
+ SerialPort.pm		- the reason you're reading this
+ SerialPort.xs		- the C code to get all the serial bits from .h files
+ modemtest		- quick tool for checking on serial port
+ show-tiocm.c           - simple C tool to report TIOCM* hacks
+ Device-SerialPort.spec - RPM .spec file for building RPMS
 
-    t			- test directory
-    t/Altport.pm	- stub for inheritance test
-    t/test1.t		- RUN ME FIRST, basic tests
-    t/test2.t		- tests restarting_a_configuration and timeouts
-    t/test3.t		- Inheritance and export version of test1.t
-    t/test4.t		- Inheritance version of test2.t and "restart"
+ t			- test directory
+ t/Altport.pm		- stub for inheritance test
+ t/01timing.t           - tests millisecond counter in "get_tick_count"
+ t/test1.t		- tests basic port function
+ t/test2.t		- tests restarting_a_configuration and timeouts
+ t/test3.t		- Inheritance and export version of test1.t
+ t/test4.t		- Inheritance version of test2.t and "restart"
 
-    eg/any_os.plx	- cross-platform "conditional use" demo
-    eg/demo1.plx	- talks to a "really dumb" terminal
-    eg/demo2.plx	- "poor man's" readline and chatV
-    eg/demo3.plx	- looks like a setup menu - but only looks :-(
-    eg/demo4.plx	- simplest setup: "new", "required param"
-    eg/demo5.plx	- "waitfor" and "nextline" using lookfor
-    eg/demo6.plx	- basic tied FileHandle operations, record separators
-    eg/demo7.plx	- a Perl/Tk based terminal, event loop and callbacks
-    eg/demo8.plx	- command line terminal emulator with Term::Readkey
-    eq/options.plx	- post-install test that prints available options
-    eg/example1.txt	- examples from The Perl Journal #13
-    eg/example2.txt	- (minimal mods for cross-platform use)
-    eg/example3.txt
-    eg/example4.txt
-    eg/example5.txt
-    eg/example6.txt
-    eg/example7.txt
-    eg/example8.txt
+ eg/any_os.plx		- cross-platform "conditional use" demo
+ eg/demo1.plx		- talks to a "really dumb" terminal
+ eg/demo2.plx		- "poor man's" readline and chatV
+ eg/demo3.plx		- looks like a setup menu - but only looks :-(
+ eg/demo4.plx		- simplest setup: "new", "required param"
+ eg/demo5.plx		- "waitfor" and "nextline" using lookfor
+ eg/demo6.plx		- basic tied FileHandle operations, record separators
+ eg/demo7.plx		- a Perl/Tk based terminal, event loop and callbacks
+ eg/demo8.plx		- command line terminal emulator with Term::Readkey
+ eq/options.plx		- post-install test that prints available options
+ eg/example1.txt	- examples from The Perl Journal #13
+ eg/example2.txt	- (minimal mods for cross-platform use)
+ eg/example3.txt
+ eg/example4.txt
+ eg/example5.txt
+ eg/example6.txt
+ eg/example7.txt
+ eg/example8.txt
 
-    autotools/*         - various tools used by the "configure" script
+ autotools/*		- various tools used by the "configure" script
 
 INSTALL and TEST:
 
@@ -125,11 +129,11 @@ on my Redhat 5.2 system. Just touch it, the contents are not important.
 They may be someday. But not yet. You might need to be "root" for that.
 
 Run 'perl Makefile.PL' followed by 'make'. This will create install files
-and directories. Run 'make test' with nothing connected to "/dev/ttyS0".
+and directories. Run 'make test' with nothing connected to "/dev/ttyS1".
 This will run the tests and create a configuration_file. You can specify
-a different port to test via 'perl Makefile.PL PORT'. Makefile.PL creates
-"t/DefaultPort.pm". You can also specify an alternate port with the Shell
-Variable "Makefile_Test_Port".
+a different port to test via 'perl Makefile.PL TESTPORT=<DEVICE>'.
+Makefile.PL creates "t/DefaultPort.pm". You can also specify an alternate
+port with the Shell Variable "Makefile_Test_Port".
 
 The Benchmark routines are used to generate reports. The test suite
 covers many of the module methods and sets the port for 9600 baud,
@@ -146,7 +150,7 @@ line. Delay may be set from 0 to 5 seconds.
 
 All tests are expected to pass - I would be very interested in hearing
 about failures ("not ok"). These tests should be run from a command
-prompt.
+prompt.  For details run "make test TEST_VERBOSE=1".
 
 SOLARIS TROUBLE:
 

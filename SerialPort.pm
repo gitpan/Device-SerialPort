@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm,v 1.15 2003/06/12 19:58:01 nemies Exp $
+# $Id: SerialPort.pm,v 1.17 2003/06/18 08:02:58 nemies Exp $
 #
 # Copyright (C) 2003 Kees Cook
 # kees@outflux.net, http://outflux.net/
@@ -32,7 +32,7 @@ use IO::Handle;
 use Carp;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-$VERSION = '0.21';
+$VERSION = '0.22';
 
 require Exporter;
 
@@ -59,10 +59,10 @@ XSLoader::load('Device::SerialPort', $VERSION);
 use vars qw($bitset $bitclear $rtsout $dtrout $getstat $incount $outcount
 	    $txdone $dtrset $dtrclear $termioxflow $tcgetx $tcsetx
             $ms_per_tick);
-my $ms_per_tick = 1000.0 / POSIX::sysconf(&POSIX::_SC_CLK_TCK);
 
 # Load all the system bits we need
 my $bits=Device::SerialPort::Bits::get_hash();
+my $ms_per_tick=undef;
 
 $bitset = defined($bits->{'TIOCMBIS'}) ? $bits->{'TIOCMBIS'} : 0;
 $bitclear = defined($bits->{'TIOCMBIC'}) ? $bits->{'TIOCMBIC'} : 0;
@@ -231,8 +231,51 @@ my $zero=0;
 
 # Preloaded methods go here.
 
+sub init_ms_per_tick
+{
+	my $from_posix=undef;
+	my $errors="";
+
+	# To find the real "CLK_TCK" value, it is *best* to query sysconf
+	# for it.  However, this requires access to _SC_CLK_TCK.  In
+	# modern versions of Perl (and libc) these this is correctly found
+	# in the POSIX module.  On really old versions, the hard-coded
+	# "CLK_TCK" can be found.  So, first attempt to use the POSIX
+	# module to get what we need, and then try our internal bit
+	# detection code, and finally fall back to the hard-coded value
+	# before totally giving up.
+	for (;;) {
+		eval { $from_posix = POSIX::sysconf(&POSIX::_SC_CLK_TCK); };
+		last if (!$@);
+		$errors.="$@\n";
+
+		if (defined($bits->{'_SC_CLK_TCK'})) {
+			$from_posix = POSIX::sysconf($bits->{'_SC_CLK_TCK'});
+			last;
+		}
+		$errors.="$@\n";
+
+		# According to POSIX, "CLK_TCK" is obsolete now.  See
+		# "man 2 times" and the POSIX-1996 standard
+		eval { $from_posix = &POSIX::CLK_TCK; };
+		last if (!$@);
+		$errors.="$@\n";
+
+		last;
+	}
+	if (!defined($from_posix) || $from_posix == 0) {
+		die "Cannot find a useful value for _SC_CLK_TCK!\n$errors";
+	}
+	$ms_per_tick = 1000.0 / $from_posix;
+}
+
 sub get_tick_count {
 	# clone of Win32::GetTickCount - perhaps same 49 day problem
+
+    if (!defined($ms_per_tick)) {
+	init_ms_per_tick();
+    }
+
     my ($real2, $user2, $system2, $cuser2, $csystem2) = POSIX::times();
     $real2 *= $ms_per_tick;
     ## printf "real2 = %8.0f\n", $real2;
@@ -2991,6 +3034,16 @@ A fixed overhead time is added to the product of bytes and per_byte_time.
 Read_Total = B<read_const_time> + (B<read_char_time> * bytes_to_read)
 
 Write timeouts and B<read_interval> timeouts are not currently supported.
+
+On some machines, reads larger than 4,096 bytes may be truncated at 4,096,
+regardless of the read size or read timing settings used. In this case,
+try turning on or increasing the inter-character delay on your serial
+device. Also try setting the read size to
+
+  $PortObj->read(1) or $PortObj->read(255)
+
+and performing multiple reads until the transfer is completed.
+
 
 =head1 BUGS
 

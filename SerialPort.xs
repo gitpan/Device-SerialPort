@@ -7,6 +7,9 @@
 /* First step: include all the files we think we may need to
    get all the silly serial and modem bits defined.  This should
    be exactly the same as what's in the autoconf scripts. */
+#ifdef HAVE_UNISTD_H
+# include <unistd.h>
+#endif
 #ifdef HAVE_SYS_IOCTL_H
 # include <sys/ioctl.h>
 #endif
@@ -45,6 +48,9 @@ PROTOTYPE:
 CODE:
 	// initialize the hash
 	hv = newHV();
+#ifdef _SC_CLK_TCK
+	ADD_TO_HASH(_SC_CLK_TCK)
+#endif
 #ifdef TIOCMBIS
 	ADD_TO_HASH(TIOCMBIS)
 #endif

@@ -6,12 +6,17 @@ use ExtUtils::MakeMaker;
 # First, we need to figure out a default serial port to use for
 # testing.
 print "Trying to find a serial port for testing...\n";
-my @SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1" );
+my @SERIALS;
 if (@ARGV) {
-    @SERIALS=@ARGV;
+	foreach my $arg (@ARGV) {
+		if ($arg =~ /^TESTPORT=(.+)$/) {
+			push(@SERIALS,$1);
+		}
+	}
 }
-else {
-	print "(use 'perl Makefile.PL <DEVICE>' to override this search)\n";
+unless (@SERIALS) {
+	@SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1" );
+	print "(use 'perl Makefile.PL TESTPORT=<DEVICE>' to override this search)\n";
 }
 
 my $file=undef;
@@ -101,6 +106,7 @@ my %mm_args=(
     'ABSTRACT_FROM' => 'SerialPort.pm', # retrieve abstract from module
     'AUTHOR'        => 'Kees Cook <kees@outflux.net>',
     'LIBS'          => [''], # e.g., '-lm'
+    'EXE_FILES'     => ['modemtest'],
     'DEFINE'        => '', # e.g., '-DHAVE_SOMETHING'
     'INC'           => '-I.', # e.g., '-I. -I/usr/include/other'
     'clean'         => { 'FILES' => "config.h t/DefaultPort.pm *.cfg t/*.cfg" },

@@ -27,6 +27,7 @@ eg/example7.txt
 eg/example8.txt
 eg/options.plx
 t/AltPort.pm
+t/01timing.t
 t/test1.t
 t/test2.t
 t/test3.t
@@ -39,3 +40,4 @@ autotools/install-sh
 autotools/missing
 autotools/mkinstalldirs
 show-tiocm.c.test
+Device-SerialPort.spec

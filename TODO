@@ -1,9 +1,9 @@
-Last updated Jun 12, 2003
 
 - fix AIX hardware flow control
 - fix lockfile support
 - spread POD docs out across the module
-- add "INSTALL"
-- add "COPYING"
+
+- add a mechanism to set dtrrts etc in one swoop
+- create a method to call "new" without a device name (cleaner way to test)
 
 
