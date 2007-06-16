@@ -2,10 +2,10 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm,v 1.35 2004/11/09 21:56:43 nemies Exp $
+# $Id: SerialPort.pm 308 2007-06-16 08:08:48Z keescook $
 #
 # Copyright (C) 1999, Bill Birthisel
-# Copyright (C) 2000-2004 Kees Cook
+# Copyright (C) 2000-2007 Kees Cook
 # kees@outflux.net, http://outflux.net/
 # 
 # This program is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 # M.mmmrrr Major minor rev
 # Odd mmm is a devel version
 # Even mmm is a stable version
-$VERSION = 1.002_000;
+$VERSION = 1.002_001;
 
 require Exporter;
 
@@ -91,6 +91,9 @@ sub ECHOKE { return $bits->{'ECHOKE'} || 0; }
 sub ECHOCTL { return $bits->{'ECHOCTL'} || 0; }
 
 sub TIOCM_LE { return $bits->{'TIOCSER_TEMT'} || $bits->{'TIOCM_LE'} || 0; }
+
+# Set alternate bit names
+$bits->{'portable_TIOCINQ'} = $bits->{'TIOCINQ'} || $bits->{'FIONREAD'};
 
 ## Next 4 use Win32 names for compatibility
 
@@ -691,7 +694,7 @@ sub can_intr_count {
 }
 
 sub can_status {
-    return 1 if (defined($bits->{'TIOCINQ'}) &&
+    return 1 if (defined($bits->{'portable_TIOCINQ'}) &&
                  defined($bits->{'TIOCOUTQ'}));
     return 0;
     #return 0 unless ($incount && $outcount);
@@ -1850,7 +1853,7 @@ sub status {
     my @stat = (0, 0, 0, 0);
     my $mstat = " ";
 
-    return unless $self->ioctl('TIOCINQ', \$mstat);
+    return unless $self->ioctl('portable_TIOCINQ', \$mstat);
 
     $stat[ST_INPUT] = unpack('L', $mstat);
     return unless $self->ioctl('TIOCOUTQ', \$mstat);
@@ -2017,7 +2020,8 @@ sub close {
         $ok = POSIX::close($self->{FD});
 
     	# we need to explicitly close this handle
-    	$self->{HANDLE}->close if ($self->{HANDLE}->opened);
+    	$self->{HANDLE}->close if (defined($self->{HANDLE}) &&
+                                   $self->{HANDLE}->opened);
 
     	$self->{FD} = undef;
     	$self->{HANDLE} = undef;
@@ -2180,9 +2184,30 @@ sub READ {
 
     ($count_in, $string_in) = $self->read($size);
 
-    $$buf="" unless (defined($$buf));
-    my $tail = substr($$buf, $offset);
-    my $head = substr($$buf, 0, $offset);
+    $$buf = '' unless defined $$buf;
+    my $buflen = length $$buf;
+
+    my ($tail, $head) = ('','');
+
+    if($offset >= 0){ # positive offset
+       if($buflen > $offset + $count_in){
+           $tail = substr($$buf, $offset + $count_in);
+       }
+
+       if($buflen < $offset){
+           $head = $$buf . ("\0" x ($offset - $buflen));
+       } else {
+           $head = substr($$buf, 0, $offset);
+       }
+    } else { # negative offset
+       $head = substr($$buf, 0, ($buflen + $offset));
+
+       if(-$offset > $count_in){
+           $tail = substr($$buf, $offset + $count_in);
+       }
+    }
+
+    # remaining unhandled case: $offset < 0 && -$offset > $buflen
     $$buf = $head.$string_in.$tail;
     return $count_in;
 }
@@ -3285,7 +3310,7 @@ perltoot - Tom Christiansen's Object-Oriented Tutorial
 =head1 COPYRIGHT
 
  Copyright (C) 1999, Bill Birthisel. All rights reserved.
- Copyright (C) 2000-2004, Kees Cook.  All rights reserved.
+ Copyright (C) 2000-2007, Kees Cook.  All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

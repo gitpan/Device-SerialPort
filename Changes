@@ -1,5 +1,11 @@
 Revision history for Perl extension Device::SerialPort.
 
+1.2.1 2007-06-16 (Kees)
+	* SerialPort.pm: correction to READ by Martin Hans
+	* SerialPort.pm: corrected "close" call noticed by David R. Wilson
+	* Added knowledge of FIONREAD noticed by Darrin Chandler
+	* Fixed up white-space issues.
+
 1.2.0 2004-11-09 (Kees)
 	* configure.ac: corrected version number here too.
 	* SerialPort.pm: added wait_modemlines, intr_count.
@@ -10,7 +16,7 @@ Revision history for Perl extension Device::SerialPort.
 	* Makefile.PL: added an OSX serial port default
 	* SerialPort.pm: patch for EOF handling by Arne Georg Gleditsch.
 	  On a read for more than 0 bytes, and "select" finishes, but
-          we get a 0 back, then we assume EOF.
+	  we get a 0 back, then we assume EOF.
 	* corrected version in .spec file.
 
 1.0.1 2004-03-29 (Kees)
@@ -18,7 +24,7 @@ Revision history for Perl extension Device::SerialPort.
 	  Rick Ballard and John Eng for finding this!)
 
 1.0.0 2004-02-23 (Kees)
-	* fixed logic in READ tie function from Jaakko Yli-Luukko	
+	* fixed logic in READ tie function from Jaakko Yli-Luukko
 	* added RPM .spec packaging support
 	* adding debian packaging support
 	* updated version number to first stable release
@@ -39,7 +45,7 @@ Revision history for Perl extension Device::SerialPort.
 	  noticed by Ed Morandi.
 	* built an rpm .spec file with the help of cpan2rpm.
 	* adding TESTPORT=... as a Makefile.PL option to not step on
-          MakeMaker's feet.
+	  MakeMaker's feet.
 	* making "modemtest" an installable script (which adds #! to top).
 	* cleaning up "modemtest" args and output.
 	* reversing configure report so "best" case reports "yes" for all.
@@ -51,21 +57,21 @@ Revision history for Perl extension Device::SerialPort.
 	* don't release files at midnight any more: forgot SerialPort.xs
 
 0.20 2003-06-12 (Kees)
-        * fixed some truth bugs found by David Dyck <david.dyck@fluke.com>
+	* fixed some truth bugs found by David Dyck <david.dyck@fluke.com>
 	* totally rewrote serial bit detection code to use "normal"
-          perl XS routines.  Had to even toss in a "configure" script
-          to make it really robust.
+	  perl XS routines.  Had to even toss in a "configure" script
+	  to make it really robust.
 	* jumped up to version 0.20 just because it's just a big change
-          to the build process.  Everything else appears undisturbed, but
-          I want to give some time for testing it out on other
-          architectures.
+	  to the build process.  Everything else appears undisturbed, but
+	  I want to give some time for testing it out on other
+	  architectures.
 
 0.13 2002-05-31 (Kees)
 	* added 'sys/modem.ph' for broken HPUX headers
-        * fixed *BSD tiocmget and tick counts, care of
-                joerg_wunsch@interface-systems.de
-        * fixed the HPUX tioc* stuff, care of
-                "Chang, Jerry" <Jerry.Chang@pyxis.com>
+	* fixed *BSD tiocmget and tick counts, care of
+	  joerg_wunsch@interface-systems.de
+	* fixed the HPUX tioc* stuff, care of
+	  "Chang, Jerry" <Jerry.Chang@pyxis.com>
 
 0.12 2001-10-24 (Kees)
 	* found a place where HANDLE was staying open

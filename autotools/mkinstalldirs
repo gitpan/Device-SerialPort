@@ -4,7 +4,7 @@
 # Created: 1993-05-16
 # Public domain
 
-# $Id: mkinstalldirs,v 1.1 2003/06/12 08:37:41 nemies Exp $
+# $Id: mkinstalldirs 250 2003-06-12 08:37:41Z nemies $
 
 errstatus=0
 
