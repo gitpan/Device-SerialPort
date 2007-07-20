@@ -23,16 +23,23 @@ if (@ARGV) {
 
 # First, we need to figure out a default serial port to use for
 # testing.
-print "Trying to find a serial port for testing...\n";
-unless (@SERIALS) {
+if (scalar(@SERIALS)>0 && $SERIALS[0] eq "auto") {
+	print "Trying to find a serial port for testing...\n";
 	@SERIALS=( "/dev/ttyS1", "/dev/cua01", "/dev/cua/b", "/dev/tty1",
 		   "/dev/tty.modem" );
 	print "(use 'perl Makefile.PL TESTPORT=<DEVICE>' to override this search)\n";
 }
 
-my $file=undef;
-my $test;
-foreach $test (@SERIALS) {
+if (scalar(@SERIALS)<1) {
+	print "To enable serial port tests, use:\n";
+	print "\tperl Makefile.PL TESTPORT=<DEVICE>\n";
+	print "where <DEVICE> is a specific port or 'auto' to autodetect.\n";
+	unlink("t/DefaultPort.pm");
+}
+else {
+  my $file=undef;
+  my $test;
+  foreach $test (@SERIALS) {
     print "\tchecking '$test' ... ";
     lstat($test);
     if (-e _) {
@@ -80,29 +87,28 @@ foreach $test (@SERIALS) {
 	}
     }
     print "nope\n";
-}
-
-if (!defined($file)) {
+  }
+  if (!defined($file)) {
     die "Could not find a serial port to use for testing.\n".
         "Please specify one on the 'perl Makefile.PL' command line, like so:\n".
 	"\tperl Makefile.PL /dev/ttyS0\n";
-}
-
-my $dfile = "t/DefaultPort.pm";
-open (DEFAULT, "> $dfile") or die "Can't create $dfile: $!\n";
-print DEFAULT <<EOF;
+  }
+  my $dfile = "t/DefaultPort.pm";
+  open (DEFAULT, "> $dfile") or die "Can't create $dfile: $!\n";
+  print DEFAULT <<EOF;
 package SerialJunk;
 # Created by Makefile.PL
 
 \$Makefile_Test_Port = "$file";
 EOF
 
-close DEFAULT;
+  close DEFAULT;
 
-print "\n";
-print "PLEASE NOTE:\n";
-print "If you run 'make test', you must make sure that nothing is plugged\n";
-print "into '$file'!\n";
+  print "\n";
+  print "PLEASE NOTE:\n";
+  print "If you run 'make test', you must make sure that nothing is plugged\n";
+  print "into '$file'!\n";
+}
 
 # I may end up needing this to hint the configure script?
 #use Config;

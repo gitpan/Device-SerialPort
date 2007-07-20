@@ -28,6 +28,9 @@
 #ifdef HAVE_SYS_MODEM_H
 # include <sys/modem.h>
 #endif
+#ifdef HAVE_IOKIT_SERIAL_IOSS_H
+# include <IOKit/serial/ioss.h>
+#endif
 
 #define ADD_TO_HASH(v)	{ 				\
 	key = #v;					\
@@ -140,6 +143,9 @@ CODE:
 #endif
 
 	/* Baud rates */
+#ifdef IOSSIOSPEED
+	ADD_TO_HASH(IOSSIOSPEED)
+#endif
 #ifdef B0
         ADD_TO_HASH(B0)
 #endif

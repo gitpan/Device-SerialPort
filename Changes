@@ -1,5 +1,10 @@
 Revision history for Perl extension Device::SerialPort.
 
+1.3.0 2007-07-20 (Kees)
+	* SerialPort.{pm,xs}, configure.ac: add arbitrary baud rate setting
+	  as suggested by Steven Michalske.
+	* Disabled default port tests, initial switch to Test::More.
+
 1.2.1 2007-06-16 (Kees)
 	* SerialPort.pm: correction to READ by Martin Hans
 	* SerialPort.pm: corrected "close" call noticed by David R. Wilson

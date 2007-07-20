@@ -8,12 +8,18 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..46\n"; }
-END {print "not ok 1\n" unless $loaded;}
+use Test::More;
+eval "use DefaultPort;";
+if ($@) {
+    plan skip_all => 'No serial port selected for use with testing';
+}
+else {
+    plan tests => 46;
+}
+
+use_ok("Device::SerialPort");
+
 use Device::SerialPort 0.10;
-require "DefaultPort.pm";
-$loaded = 1;
-print "ok 1\n";
 
 ######################### End of black magic.
 
@@ -48,7 +54,6 @@ my $cfgfile = $file."_test.cfg";
 $cfgfile =~ s/.*\///;
 
 my $fault = 0;
-my $tc = 2;		# next test number
 my $ob;
 my $pass;
 my $fail;
@@ -64,25 +69,18 @@ my $tock;
 my @necessary_param = Device::SerialPort->set_test_mode_active(1);
 
 sub is_ok {
-    my $result = shift;
-    printf (($result ? "" : "not ")."ok %d\n",$tc++);
-    return $result;
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(shift);
 }
 
 sub is_zero {
-    my $result = shift;
-    if (defined $result) {
-        return is_ok ($result == 0);
-    }
-    else {
-        printf ("not ok %d\n",$tc++);
-    }
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(shift == 0);
 }
 
 sub is_bad {
-    my $result = shift;
-    printf (($result ? "not " : "")."ok %d\n",$tc++);
-    return (not $result);
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(!shift);
 }
 
 # 2: Constructor

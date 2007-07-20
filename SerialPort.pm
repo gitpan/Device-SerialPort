@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm 308 2007-06-16 08:08:48Z keescook $
+# $Id: SerialPort.pm 309 2007-07-20 18:08:14Z keescook $
 #
 # Copyright (C) 1999, Bill Birthisel
 # Copyright (C) 2000-2007 Kees Cook
@@ -37,7 +37,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 # M.mmmrrr Major minor rev
 # Odd mmm is a devel version
 # Even mmm is a stable version
-$VERSION = 1.002_001;
+$VERSION = 1.003_000;
 
 require Exporter;
 
@@ -399,6 +399,9 @@ sub new {
     # 1 stop bit
     $self->{"C_CFLAG"} &= ~CSTOPB;
 
+    # by default, disable the OSX arbitrary baud settings
+    $self->{"IOSSIOSPEED_BAUD"} = -1;
+
     &write_settings($self);
 
     $self->{ALIAS} = $self->{NAME};	# so "\\.\+++" can be changed
@@ -452,11 +455,20 @@ sub write_settings {
 
     # put current values into Termios structure
     $self->{TERMIOS}->setcflag($self->{"C_CFLAG"});
-    $self->{TERMIOS}->setiflag($self->{"C_IFLAG"});
-    $self->{TERMIOS}->setispeed($self->{"C_ISPEED"});
     $self->{TERMIOS}->setlflag($self->{"C_LFLAG"});
+    $self->{TERMIOS}->setiflag($self->{"C_IFLAG"});
     $self->{TERMIOS}->setoflag($self->{"C_OFLAG"});
-    $self->{TERMIOS}->setospeed($self->{"C_OSPEED"});
+
+    if ($self->{"IOSSIOSPEED_BAUD"} != -1 && $self->can_arbitrary_baud()) {
+        # for OSX arbitrary baud rates
+        my $speed = pack( "L", $self->{"IOSSIOSPEED_BAUD"});
+        $self->ioctl('IOSSIOSPEED', \$speed );
+    }
+    else {
+        # Regular baud rates
+        $self->{TERMIOS}->setispeed($self->{"C_ISPEED"});
+        $self->{TERMIOS}->setospeed($self->{"C_OSPEED"});
+    }
 
     foreach $item (keys %c_cc_fields) {
         $self->{TERMIOS}->setcc($c_cc_fields{$item}, $self->{"C_$item"});
@@ -466,7 +478,7 @@ sub write_settings {
     $result = defined($self->{TERMIOS}->setattr($self->{FD}, &POSIX::TCSANOW));
 
     if ($Babble) {
-        print "writing settings to $self->{ALIAS}\n";
+        print "wrote settings to $self->{ALIAS}\n";
     }
 
     return $result; 
@@ -723,6 +735,12 @@ sub can_rts {
     #return 1;
 }
 
+# can we set arbitrary baud rates? (OSX)
+sub can_arbitrary_baud {
+    return 1 if (defined($bits->{'IOSSIOSPEED'}));
+    return 0;
+}
+
 sub termiox {
     my $self = shift;
     return unless ($IOCTL_VALUE_TERMIOXFLOW);
@@ -791,11 +809,20 @@ sub baudrate {
     my $item = 0;
 
     if (defined($rate)) {
+        # specific baud rate
         if (defined $bauds{$rate}) {
             $self->{"C_OSPEED"} = $bauds{$rate};
             $self->{"C_ISPEED"} = $bauds{$rate};
+            $self->{"IOSSIOSPEED_BAUD"} = -1;
             write_settings($self);
         }
+        # arbitrary baud rate
+        elsif ($self->can_arbitrary_baud()) {
+            $self->{"IOSSIOSPEED_BAUD"} = $rate;
+            write_settings($self);
+            return $rate;
+        }
+        # no such baud rate
         else {
             if ($self->{U_MSG} or $Babble) {
                 carp "Can't set baudrate ($rate) on $self->{ALIAS}";
@@ -2408,12 +2435,13 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   $PortObj->can_spec_char;		# 0 use stty
   $PortObj->can_interval_timeout;	# 0 currently
   $PortObj->can_total_timeout;		# 1 currently
-  $PortObj->can_ioctl;			# automatically detected by eval
-  $PortObj->can_status;			# automatically detected by eval
-  $PortObj->can_write_done;		# automatically detected by eval
-  $PortObj->can_modemlines;     # automatically detected by eval
-  $PortObj->can_wait_modemlines;# automatically detected by eval
-  $PortObj->can_intr_count;		# automatically detected by eval
+  $PortObj->can_ioctl;			# automatically detected
+  $PortObj->can_status;			# automatically detected
+  $PortObj->can_write_done;		# automatically detected
+  $PortObj->can_modemlines;     # automatically detected
+  $PortObj->can_wait_modemlines;# automatically detected
+  $PortObj->can_intr_count;		# automatically detected
+  $PortObj->can_arbitrary_baud; # automatically detected
 
 =head2 Operating Methods
 
@@ -2440,6 +2468,10 @@ Device::SerialPort - Linux/POSIX emulation of Win32::SerialPort functions.
   if ($PortObj->can_intr_count) {
     $count = $PortObj->intr_count();
     print "got $count interrupts\n";
+  }
+
+  if ($PortObj->can_arbitrary_baud) {
+    print "this port can set arbitrary baud rates\n";
   }
 
   ($BlockingFlags, $InBytes, $OutBytes, $ErrorFlags) = $PortObj->status;

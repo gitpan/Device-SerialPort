@@ -28,10 +28,10 @@ eg/example8.txt
 eg/options.plx
 t/AltPort.pm
 t/01timing.t
-t/test1.t
-t/test2.t
-t/test3.t
-t/test4.t
+t/10basic.t
+t/11saved-state.t
+t/20inherited.t
+t/21inherited-state.t
 autotools/config.guess
 autotools/config.rpath
 autotools/config.sub

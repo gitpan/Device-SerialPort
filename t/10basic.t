@@ -6,7 +6,14 @@ use lib '.','./t','./blib/lib','../blib/lib';
 # Before installation is performed this script should be runnable with
 # `perl test1.t time' which pauses `time' seconds (1..5) between pages
 
-use Test::More 'no_plan';
+use Test::More;
+eval "use DefaultPort;";
+if ($@) {
+    plan skip_all => 'No serial port selected for use with testing';
+}
+else {
+    plan tests => 188;
+}
 use_ok("Device::SerialPort");
 
 use POSIX qw(uname);
@@ -18,7 +25,6 @@ if ($sysname eq "SunOS" && $machine =~ /^sun/) {
 }
 
 use Device::SerialPort qw( :STAT 0.10 );
-use DefaultPort;
 
 use strict;
 
@@ -58,7 +64,7 @@ if (exists $ENV{Makefile_Test_Port}) {
 if (@ARGV) {
     $file = shift @ARGV;
 }
-diag("Using '$file' as test port.");
+#diag("Using '$file' as test port.");
 
 my $cfgfile = "$file"."_test.cfg";
 my $tstlock = "$file"."_lock.cfg";
@@ -491,10 +497,7 @@ SKIP: {
     is_zero($blk);				# 133
 
     is_zero($in);				# 134
-    TODO: {
-        local $TODO = 'something attached to port?';
-        is($out, 188, 'out bytes is 188');
-    }
+    is($out, 188, 'output bytes is 188 (cannot have anything attached to port)');
     is_zero($err);				# 136
     if ($ob->can_write_done()) {
     	($out, $err) = $ob->write_done(0);
@@ -536,16 +539,10 @@ SKIP: {
     is_ok(MS_CTS_ON);				# 143
     is_ok(MS_DSR_ON);				# 144
     is_ok(MS_RING_ON);				# 145
-    TODO: {
-        local $TODO = 'something attached to port';
-        is_ok(MS_RLSD_ON);				# 146
-    }
+    ok(MS_RLSD_ON, "MS_RLSD_ON defined");	# 146
     $blk = MS_CTS_ON | MS_DSR_ON | MS_RING_ON | MS_RLSD_ON;
     is_ok(defined($ob->modemlines));		# 147
-    TODO: {
-        local $TODO = 'something attached to port';
-        is_zero($blk & $ob->modemlines);		# 148
-    }
+    is($blk & $ob->modemlines, 0, "Modem lines clear (cannot have anything attached to port)");		# 148
 }
 
 is_zero(ST_BLOCK);				# 149

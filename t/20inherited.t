@@ -8,8 +8,14 @@ use lib '.','./t','./blib/lib','../blib/lib';
 
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..159\n"; }
-END {print "not ok 1\n" unless $loaded;}
+use Test::More;
+eval "use DefaultPort;";
+if ($@) {
+    plan skip_all => 'No serial port selected for use with testing';
+}
+else {
+    plan tests => 171;
+}
 
 use POSIX qw(uname);
 # can't drain ports without modems on them under POSIX in Solaris 2.6
@@ -20,9 +26,6 @@ if ($sysname eq "SunOS" && $machine =~ /^sun/) {
 }
 
 use AltPort qw( :PARAM 0.10 );		# check inheritance & export
-require "DefaultPort.pm";
-$loaded = 1;
-print "ok 1\n";
 
 ######################### End of black magic.
 
@@ -40,28 +43,19 @@ sub test_bin_list {
     return 1;
 }
 
-my $tc = 2;		# next test number
-
 sub is_ok {
-    my $result = shift;
-    printf (($result ? "" : "not ")."ok %d\n",$tc++);
-    return $result;
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(shift);
 }
 
 sub is_zero {
-    my $result = shift;
-    if (defined $result) {
-        return is_ok ($result == 0);
-    }
-    else {
-        printf ("not ok %d\n",$tc++);
-    }
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(shift == 0);
 }
 
 sub is_bad {
-    my $result = shift;
-    printf (($result ? "not " : "")."ok %d\n",$tc++);
-    return (not $result);
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return ok(!shift);
 }
 
 # assume a "vanilla" port on "/dev/ttyS0"
@@ -115,32 +109,29 @@ foreach $e (@necessary_param) { $required_param{$e} = 0; }
 
 ## 2 - 5 SerialPort Global variable ($Babble);
 
-is_bad(scalar AltPort->debug);		# 3: start out false
-is_ok(scalar AltPort->debug(1));	# 4: set it
+ok(scalar(AltPort->debug) == 0);		# 3: start out false
+ok(scalar(AltPort->debug(1)));	# 4: set it
 
 # 5: yes_true subroutine, no need to SHOUT if it works
 
-$e="not ok $tc:";
-unless (AltPort->debug("T"))   { print "$e \"T\"\n"; $fault++; }
-if     (AltPort->debug("F"))   { print "$e \"F\"\n"; $fault++; }
+ok ( AltPort->debug("T"));
+ok (!AltPort->debug("F"));
 
-no strict 'subs';
-unless (AltPort->debug(T))     { print "$e T\n";     $fault++; }
-if     (AltPort->debug(F))     { print "$e F\n";     $fault++; }
-unless (AltPort->debug(Y))     { print "$e Y\n";     $fault++; }
-if     (AltPort->debug(N))     { print "$e N\n";     $fault++; }
-unless (AltPort->debug(ON))    { print "$e ON\n";    $fault++; }
-if     (AltPort->debug(OFF))   { print "$e OFF\n";   $fault++; }
-unless (AltPort->debug(TRUE))  { print "$e TRUE\n";  $fault++; }
-if     (AltPort->debug(FALSE)) { print "$e FALSE\n"; $fault++; }
-unless (AltPort->debug(Yes))   { print "$e Yes\n";   $fault++; }
-if     (AltPort->debug(No))    { print "$e No\n";    $fault++; }
-unless (AltPort->debug("yes")) { print "$e \"yes\"\n"; $fault++; }
-if     (AltPort->debug("f"))   { print "$e \"f\"\n";   $fault++; }
-use strict 'subs';
-
-print "ok $tc\n" unless ($fault);		# 5
-$tc++;
+{
+    no strict 'subs';
+    ok ( AltPort->debug(T));
+    ok (!AltPort->debug(F));
+    ok ( AltPort->debug(Y));
+    ok (!AltPort->debug(N));
+    ok ( AltPort->debug(ON));
+    ok (!AltPort->debug(OFF));
+    ok ( AltPort->debug(TRUE));
+    ok (!AltPort->debug(FALSE));
+    ok ( AltPort->debug(Yes));
+    ok (!AltPort->debug(No));
+    ok ( AltPort->debug("yes"));
+    ok (!AltPort->debug("f"));
+}
 
 @opts = AltPort->debug;		# 6: binary_opt array
 is_ok(test_bin_list(@opts));
@@ -441,7 +432,9 @@ is_bad (defined $ob2);				# 104
 
 ## 104 - 119: Output bits and pulses
 
-if ($ob->can_ioctl) {
+SKIP: {
+    skip "Can't IOCTL", 14 unless $ob->can_ioctl;
+
     is_ok ($ob->dtr_active(0));			# 105
     $tick=$ob->get_tick_count;
     is_ok ($ob->pulse_dtr_on(100));		# 106
@@ -466,7 +459,9 @@ if ($ob->can_ioctl) {
     }
     print "<400> elapsed time=$err\n";
     
-    if ($ob->can_rts()) {
+    SKIP: {
+        skip "Can't RTS", 7 unless $ob->can_rts();
+	
         is_ok ($ob->rts_active(0));		# 111
         $tick=$ob->get_tick_count;
         is_ok ($ob->pulse_rts_on(150));		# 112
@@ -485,15 +480,7 @@ if ($ob->can_ioctl) {
     
         is_ok ($ob->rts_active(0));		# 117
     }
-    else {
-	while ($tc < 117.1) { is_ok (1); }	# 111-117
-    }
     is_ok ($ob->dtr_active(0));			# 118
-}
-else {
-    print "bypassing ioctl tests\n";
-    while ($tc < 118.1) { is_ok (1); }		# 105-118
-	# test number must change to match preceeding loop
 }
 
 $tick=$ob->get_tick_count;
