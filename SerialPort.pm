@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm 309 2007-07-20 18:08:14Z keescook $
+# $Id: SerialPort.pm 312 2007-07-21 00:47:27Z keescook $
 #
 # Copyright (C) 1999, Bill Birthisel
 # Copyright (C) 2000-2007 Kees Cook
@@ -37,7 +37,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 # M.mmmrrr Major minor rev
 # Odd mmm is a devel version
 # Even mmm is a stable version
-$VERSION = 1.003_000;
+$VERSION = 1.003_001;
 
 require Exporter;
 
@@ -458,17 +458,8 @@ sub write_settings {
     $self->{TERMIOS}->setlflag($self->{"C_LFLAG"});
     $self->{TERMIOS}->setiflag($self->{"C_IFLAG"});
     $self->{TERMIOS}->setoflag($self->{"C_OFLAG"});
-
-    if ($self->{"IOSSIOSPEED_BAUD"} != -1 && $self->can_arbitrary_baud()) {
-        # for OSX arbitrary baud rates
-        my $speed = pack( "L", $self->{"IOSSIOSPEED_BAUD"});
-        $self->ioctl('IOSSIOSPEED', \$speed );
-    }
-    else {
-        # Regular baud rates
-        $self->{TERMIOS}->setispeed($self->{"C_ISPEED"});
-        $self->{TERMIOS}->setospeed($self->{"C_OSPEED"});
-    }
+    $self->{TERMIOS}->setispeed($self->{"C_ISPEED"});
+    $self->{TERMIOS}->setospeed($self->{"C_OSPEED"});
 
     foreach $item (keys %c_cc_fields) {
         $self->{TERMIOS}->setcc($c_cc_fields{$item}, $self->{"C_$item"});
@@ -476,6 +467,13 @@ sub write_settings {
 
     # setattr returns undef on failure
     $result = defined($self->{TERMIOS}->setattr($self->{FD}, &POSIX::TCSANOW));
+
+    # IOSSIOSPEED settings are overwritten by setattr, so this needs to be
+    # called last.
+    if ($self->{"IOSSIOSPEED_BAUD"} != -1 && $self->can_arbitrary_baud()) {
+        my $speed = pack( "L", $self->{"IOSSIOSPEED_BAUD"});
+        $self->ioctl('IOSSIOSPEED', \$speed );
+    }
 
     if ($Babble) {
         print "wrote settings to $self->{ALIAS}\n";
