@@ -32,13 +32,7 @@ t/10basic.t
 t/11saved-state.t
 t/20inherited.t
 t/21inherited-state.t
-autotools/config.guess
-autotools/config.rpath
-autotools/config.sub
-autotools/depcomp
-autotools/install-sh
-autotools/missing
-autotools/mkinstalldirs
+configure.ac
 show-tiocm.c.test
 Device-SerialPort.spec
 META.yml                                 Module meta-data (added by MakeMaker)

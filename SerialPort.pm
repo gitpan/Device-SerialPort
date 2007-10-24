@@ -2,7 +2,7 @@
 # ported by Joe Doss, Kees Cook 
 # Originally for use with the MisterHouse and Sendpage programs
 #
-# $Id: SerialPort.pm 312 2007-07-21 00:47:27Z keescook $
+# $Id: SerialPort.pm 313 2007-10-24 05:50:46Z keescook $
 #
 # Copyright (C) 1999, Bill Birthisel
 # Copyright (C) 2000-2007 Kees Cook
@@ -33,11 +33,7 @@ use IO::Handle;
 use Carp;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-# Use Linux kernel style version numbering, but with Perlism insanity
-# M.mmmrrr Major minor rev
-# Odd mmm is a devel version
-# Even mmm is a stable version
-$VERSION = 1.003_001;
+$VERSION = 1.04;
 
 require Exporter;
 
